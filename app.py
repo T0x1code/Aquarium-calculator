@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Toxicode Aquarium System V9.3", layout="wide")
-st.title("🌿 Toxicode Aquarium System V9.3 — C:N:P:K + Повний контроль")
+st.title("🌿 Toxicode Aquarium System V9.5 — C:N:P:K + Повний контроль")
 
 # ======================== HELPER FUNCTIONS ========================
 def clamp(v, min_v, max_v):
