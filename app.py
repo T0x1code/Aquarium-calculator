@@ -1,10 +1,17 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Toxicode Aquarium System V8.1", layout="wide")
-st.title("🌿 Toxicode Aquarium System V8.1 Pro")
+st.set_page_config(page_title="Toxicode Aquarium System V8.7", layout="wide")
+st.title("🌿 Toxicode Aquarium System V8.7 Stability Hybrid")
 
-# ---------------- 1. SIDEBAR ----------------
+# ---------------- HELPER ----------------
+def clamp(v, min_v, max_v):
+    return max(min(v, max_v), min_v)
+
+def get_ml_dose(curr, target, conc, vol):
+    return ((target - curr) * vol) / conc if curr < target else 0.0
+
+# ---------------- 1. SIDEBAR (Твій інтерфейс) ----------------
 with st.sidebar:
     st.header("📏 Конфігурація")
     tank_vol = st.number_input("Чистий об'єм води (л)", value=200.0, step=1.0)
@@ -14,10 +21,10 @@ with st.sidebar:
     target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0, step=0.1)
     target_k = st.number_input("Ціль K (мг/л)", value=15.0, step=1.0)
     st.divider()
-    st.subheader("⚙️ Аналітика")
-    custom_redfield = st.slider("Бажана пропорція Редфілда (N:1P)", 5, 30, 15)
-    co2_limit = st.slider("Поріг тривоги CO2 (мг/л)", 20, 100, 35)
-    days = st.slider("Період прогнозу (днів)", 1, 14, 7)
+    st.subheader("⚙️ Stability Engine")
+    custom_redfield = st.slider("Пропорція Редфілда (N:1P)", 5, 30, 15)
+    days = st.slider("Період прогнозу (днів)", 1, 21, 7)
+    data_quality = st.slider("Якість даних", 0.5, 1.0, 0.85)
 
 # ---------------- 2. КАЛЬКУЛЯТОР СПОЖИВАННЯ ----------------
 st.header("📉 1. Калькулятор реального споживання")
@@ -35,10 +42,10 @@ with st.expander("Аналіз минулого періоду"):
             ch_l = cl1.number_input(f"Літрів підмінено ({name})", value=0.0, step=1.0, key=f"ch_l_{key_p}")
             d_p = cl2.number_input("Днів між тестами", value=7, min_value=1, key=f"d_{key_p}")
             p_pct = (ch_l / tank_vol) if tank_vol > 0 else 0
-            res = (p_test * (1 - p_pct) + added - c_test) / d_p
+            res = ((p_test * (1 - p_pct) + added - c_test) / d_p) * data_quality
             val = max(res, 0)
             consumption_results[name] = val
-            st.info(f"**Споживання {name}:** {val:.2f} мг/л в день")
+            st.info(f"**Споживання {name}:** {val:.2f} мг/л/д")
 
     calc_real_cons(t1, "NO3", "no3")
     calc_real_cons(t2, "PO4", "po4")
@@ -57,89 +64,76 @@ with col2:
     kh = st.number_input("KH", value=2, step=1)
     ph = st.number_input("pH", value=6.8, step=0.1)
 with col3:
-    daily_no3 = st.number_input("Споживання NO3", value=consumption_results.get('NO3', 2.0), step=0.1)
-    daily_po4 = st.number_input("Споживання PO4", value=consumption_results.get('PO4', 0.1), step=0.1)
-    daily_k = st.number_input("Споживання K", value=consumption_results.get('K', 1.0), step=0.1)
+    daily_no3 = st.number_input("Базове NO3 (д)", value=consumption_results.get('NO3', 2.0))
+    daily_po4 = st.number_input("Базове PO4 (д)", value=consumption_results.get('PO4', 0.1))
+    daily_k = st.number_input("Базове K (д)", value=consumption_results.get('K', 1.0))
+
+# Stability Engine: Розрахунок стабільності на старті
+ratio_now = no3 / po4 if po4 > 0 else 0
+stability = 1 / (1 + abs((ratio_now - custom_redfield) / custom_redfield))
 
 # ---------------- 4. ПІДМІНА ТА ДОЗУВАННЯ ----------------
 st.divider()
 c_act1, c_act2 = st.columns([1, 2])
 with c_act1:
     st.header("💧 Підміна")
-    change_l = st.number_input("Літри підміни", value=50.0, step=1.0)
-    w_tds = st.number_input("TDS нової води", value=110.0, step=5.0)
+    change_l = st.number_input("Літри підміни", value=50.0)
+    w_tds = st.number_input("TDS нової води", value=110.0)
     pct = change_l / tank_vol if tank_vol > 0 else 0
     after_no3, after_po4, after_k = no3*(1-pct), po4*(1-pct), k*(1-pct)
     after_tds = base_tds * (1-pct) + (w_tds * pct)
 with c_act2:
-    st.header("🧪 Дозування")
+    st.header("🧪 Дозування (Щоденне)")
     cd1, cd2, cd3 = st.columns(3)
-    c_n, d_n = cd1.number_input("N г/л", value=50.0, step=1.0), cd1.number_input("Внести N мл", value=0.0, step=0.1)
-    c_p, d_p = cd2.number_input("P г/л", value=5.0, step=0.1), cd2.number_input("Внести P мл", value=0.0, step=0.1)
-    c_k, d_k = cd3.number_input("K г/л", value=20.0, step=1.0), cd3.number_input("Внести K мл", value=0.0, step=0.1)
+    c_n, d_ml_n = cd1.number_input("N г/л", value=50.0), cd1.number_input("N мл/день", value=0.0)
+    c_p, d_ml_p = cd2.number_input("P г/л", value=5.0), cd2.number_input("P мл/день", value=0.0)
+    c_k, d_ml_k = cd3.number_input("K г/л", value=20.0), cd3.number_input("K мл/день", value=0.0)
 
-start_no3 = after_no3 + (d_n * c_n / tank_vol)
-start_po4 = after_po4 + (d_p * c_p / tank_vol)
-start_k = after_k + (d_k * c_k / tank_vol)
+# ---------------- 5. ДИНАМІЧНИЙ ПРОГНОЗ ----------------
+st.header("📈 3. Динамічний прогноз")
+forecast = []
+curr_n, curr_p, curr_k = after_no3, after_po4, after_k
+warns = {"N": None, "P": None}
 
-# ---------------- 5. АНАЛІТИКА ----------------
-co2_val = 3 * kh * (10**(7 - ph))
-ratio_val = start_no3 / start_po4 if start_po4 > 0 else 0
-k_min = gh * 1.5
+for d in range(days + 1):
+    forecast.append({"День": d, "NO3": curr_n, "PO4": curr_p, "K": curr_k})
+    if warns["N"] is None and curr_n <= 0.1: warns["N"] = d
+    if warns["P"] is None and curr_p <= 0.01: warns["P"] = d
 
-st.header("📈 3. Прогноз та Аналіз")
-forecast = [{"День": d, "NO3": max(start_no3 - daily_no3*d, 0), "PO4": max(start_po4 - daily_po4*d, 0), "K": max(start_k - daily_k*d, 0)} for d in range(days+1)]
+    # Математика: + Внесення - (Споживання * Стабільність)
+    curr_n = clamp(curr_n + (d_ml_n * c_n / tank_vol) - (daily_no3 * stability), 0, 100)
+    curr_p = clamp(curr_p + (d_ml_p * c_p / tank_vol) - (daily_po4 * stability), 0, 10)
+    curr_k = clamp(curr_k + (d_ml_k * c_k / tank_vol) - (daily_k * stability), 0, 100)
+
 st.line_chart(pd.DataFrame(forecast).set_index("День"))
+
+if warns["N"]: st.error(f"🚨 NO3 закінчиться на {warns['N']} день!")
+if warns["P"]: st.error(f"🚨 PO4 закінчиться на {warns['P']} день!")
 
 # ---------------- 6. ВИСНОВОК ТА ПЛАН ----------------
 st.header("📝 4. Експертний висновок")
-
-def get_ml(curr, target, conc, vol):
-    return ((target - curr) * vol) / conc if curr < target else 0
-
+co2_val = 3 * kh * (10**(7 - ph))
 f_end = forecast[-1]
-ml_n_p = get_ml(f_end["NO3"], target_no3, c_n, tank_vol)
-ml_p_p = get_ml(f_end["PO4"], target_po4, c_p, tank_vol)
-ml_k_p = get_ml(f_end["K"], target_k, c_k, tank_vol)
+ml_n_p = get_ml_dose(f_end["NO3"], target_no3, c_n, tank_vol)
+ml_p_p = get_ml_dose(f_end["PO4"], target_po4, c_p, tank_vol)
+ml_k_p = get_ml_dose(f_end["K"], target_k, c_k, tank_vol)
 
 col_advice, col_report = st.columns([1.3, 1])
 
 with col_advice:
-    # Блок Редфілда
-    if ratio_val < custom_redfield:
-        ml_fix_n = ((start_po4 * custom_redfield) - start_no3) * tank_vol / c_n
-        st.error(f"⚠️ **Дисбаланс Редфілда (Низький Азот):** Додайте **{ml_fix_n:.1f} мл** N для вирівняння.")
-    elif ratio_val > custom_redfield:
-        ml_fix_p = ((start_no3 / custom_redfield) - start_po4) * tank_vol / c_p
-        st.error(f"⚠️ **Дисбаланс Редфілда (Низький Фосфор):** Додайте **{ml_fix_p:.1f} мл** P для вирівняння.")
+    st.write(f"**Stability Engine Score:** `{stability:.2f}`")
+    if ratio_now < custom_redfield:
+        st.error(f"⚠️ **Низький Азот:** Додайте {((po4*custom_redfield)-no3)*tank_vol/c_n:.1f} мл N.")
     
-    # Блок Калію
-    if start_k < k_min:
-        st.warning(f"❗ **Дефіцит Калію ({start_k:.1f} < {k_min:.1f}):** Ризик «дірок» на листках та зупинки росту.")
-    elif start_k > gh * 2.5:
-        st.warning(f"⚠️ **Надлишок Калію:** Можливе блокування засвоєння Кальцію та Магнію (радікуліт листя).")
-
-    # Щоденна підтримка
-    st.info(f"""**📅 План підтримки на {days} днів:**
-* **N (Азот):** {ml_n_p/days:.1f} мл/день
-* **P (Фосфор):** {ml_p_p/days:.1f} мл/день
-* **K (Калій):** {ml_k_p/days:.1f} мл/день
-
-**📦 Сумарно на весь період:**
-N: {ml_n_p:.1f} мл | P: {ml_p_p:.1f} мл | K: {ml_k_p:.1f} мл""")
+    st.info(f"""**📅 План корекції (додатково на {days} дн.):**
+* **N:** {ml_n_p/days:.1f} мл/день | **P:** {ml_p_p/days:.1f} мл/день | **K:** {ml_k_p/days:.1f} мл/день""")
 
 with col_report:
     st.subheader("📋 Звіт для копіювання")
-    report = f"""--- AQUA REPORT V8.1 ---
-[БАЗОВІ] Об'єм: {tank_vol}л | Підміна: {change_l}л
-[ПАРАМЕТРИ] GH:{gh} | KH:{kh} | pH:{ph} | TDS:{after_tds:.0f}
-[ТЕСТИ] NO3:{no3} | PO4:{po4} | K:{k} | CO2:{co2_val:.1f}
-[БАЛАНС] Редфілд: {ratio_val:.1f}:1 (Ціль {custom_redfield}:1)
-[СПОЖИВАННЯ] N:{daily_no3:.2f} | P:{daily_po4:.2f} | K:{daily_k:.2f} (мг/л/д)
-
-[ПЛАН КОРЕКЦІЇ ({days} дн.)]
-- N: {ml_n_p/days:.1f} мл/д (Всього: {ml_n_p:.1f})
-- P: {ml_p_p/days:.1f} мл/д (Всього: {ml_p_p:.1f})
-- K: {ml_k_p/days:.1f} мл/д (Всього: {ml_k_p:.1f})
+    report = f"""--- AQUA REPORT V8.7 ---
+[ПАРАМЕТРИ] GH:{gh} | KH:{kh} | pH:{ph} | TDS:{after_tds:.0f} | CO2:{co2_val:.1f}
+[МОДЕЛЬ] Redfield:{ratio_now:.1f}:1 | Stability:{stability:.2f}
+[СПОЖИВАННЯ] N:{daily_no3*stability:.2f} | P:{daily_po4*stability:.2f} (скориговано)
+[ПЛАН {days}д] N:+{ml_n_p/days:.1f} мл/д | P:+{ml_p_p/days:.1f} мл/д
 -----------------------"""
     st.code(report, language="text")
