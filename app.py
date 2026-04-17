@@ -115,19 +115,70 @@ start_no3 = after_no3 + (d_n * c_n / tank_vol)
 start_po4 = after_po4 + (d_p * c_p / tank_vol)
 start_k = after_k + (d_k * c_k / tank_vol)
 
-# ---------------- 5. ПРОГНОЗ ----------------
-st.header("📈 3. Прогноз динаміки")
+# ---------------- 5. ПРОГНОЗ (динамічний) ----------------
+st.header("📈 3. Динамічний прогноз (з внесенням і споживанням)")
+
 forecast = []
-curr_n, curr_p, curr_k = start_no3, start_po4, start_k
+
+curr_n = start_no3
+curr_p = start_po4
+curr_k = start_k
+
+# щоденне внесення (можеш потім винести в UI)
+daily_add_n = (d_n * c_n / tank_vol) if tank_vol > 0 else 0
+daily_add_p = (d_p * c_p / tank_vol) if tank_vol > 0 else 0
+daily_add_k = (d_k * c_k / tank_vol) if tank_vol > 0 else 0
+
+warn_n = None
+warn_p = None
+warn_k = None
 
 for d in range(days + 1):
-    forecast.append({"День": d, "NO3": curr_n, "PO4": curr_p, "K": curr_k})
-    curr_n = clamp(curr_n - adj_daily_no3, 0, 100)
-    curr_p = clamp(curr_p - adj_daily_po4, 0, 10)
-    curr_k = clamp(curr_k - adj_daily_k, 0, 100)
+
+    # запис стану ДО змін
+    forecast.append({
+        "День": d,
+        "NO3": curr_n,
+        "PO4": curr_p,
+        "K": curr_k
+    })
+
+    # перевірка на виснаження
+    if warn_n is None and curr_n <= 0:
+        warn_n = d
+    if warn_p is None and curr_p <= 0:
+        warn_p = d
+    if warn_k is None and curr_k <= 0:
+        warn_k = d
+
+    # 1) споживання
+    curr_n -= adj_daily_no3
+    curr_p -= adj_daily_po4
+    curr_k -= adj_daily_k
+
+    # 2) внесення (щоденне, якщо дозування задано)
+    curr_n += daily_add_n
+    curr_p += daily_add_p
+    curr_k += daily_add_k
+
+    # 3) фізичні межі
+    curr_n = clamp(curr_n, 0, 100)
+    curr_p = clamp(curr_p, 0, 10)
+    curr_k = clamp(curr_k, 0, 100)
 
 df_forecast = pd.DataFrame(forecast)
 st.line_chart(df_forecast.set_index("День"))
+
+st.subheader("⚠️ Аналіз виснаження")
+
+if warn_n is not None:
+    st.error(f"NO3 може закінчитись на день {warn_n}")
+
+if warn_p is not None:
+    st.error(f"PO4 може закінчитись на день {warn_p}")
+
+if warn_k is not None:
+    st.warning(f"K може закінчитись на день {warn_k}")
 
 # ---------------- 6. АНАЛІЗ ТА ПОРАДИ ----------------
 st.header("📊 4. Аналіз та Рекомендації")
@@ -182,3 +233,34 @@ with col_rep:
 - K: {ml_k_need/days:.1f} мл/д (Разом: {ml_k_need:.1f})
 -----------------------"""
     st.code(report, language="text")
+
+# ---------------- STABILITY ENGINE ----------------
+
+def stability_engine(no3, po4, k):
+    # 1. нормальні діапазони (можеш змінити)
+    no3_min, no3_max = 5, 25
+    po4_min, po4_max = 0.2, 1.5
+    k_min, k_max = 10, 30
+
+    def score(x, low, high):
+        if x < low:
+            return x / low
+        if x > high:
+            return high / x
+        return 1.0
+
+    s_no3 = score(no3, no3_min, no3_max)
+    s_po4 = score(po4, po4_min, po4_max)
+    s_k = score(k, k_min, k_max)
+
+    # Redfield як вторинний фактор
+    ratio = no3 / po4 if po4 > 0 else 0
+    redfield_score = 1 / (1 + abs((ratio - custom_redfield) / custom_redfield))
+
+    # фінальна стабільність
+    stability = (0.5 * s_no3 + 0.3 * s_po4 + 0.2 * s_k) * redfield_score
+
+    return clamp(stability, 0.05, 1.0), ratio
+
+
+stability, ratio_now = stability_engine(no3_now, po4_now, k_now)
