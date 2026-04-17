@@ -1,46 +1,71 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Toxicode Aquarium System V6", layout="wide")
-st.title("🌿 Toxicode Aquarium System V6 Pro")
+st.set_page_config(page_title="Toxicode Aquarium System V7", layout="wide")
+st.title("🌿 Toxicode Aquarium System V7 Pro")
 
-# ---------------- 1. ЗАГАЛЬНІ ПАРАМЕТРИ ----------------
+# ---------------- 1. SIDEBAR: ГЛОБАЛЬНІ ПАРАМЕТРИ ----------------
 with st.sidebar:
-    st.header("📏 Конфігурація")
-    tank_vol = st.number_input("Чистий обʼєм акваріума (л)", value=200.0, step=1.0)
-    days = st.slider("Прогноз на (днів)", 1, 14, 7)
-    target_no3 = st.number_input("Цільовий NO3 (мг/л)", value=15.0)
+    st.header("📏 Конфігурація системи")
+    tank_vol = st.number_input("Об'єм акваріума (л)", value=200.0, step=1.0)
+    
+    st.divider()
+    st.subheader("🎯 Цільові показники")
+    target_no3 = st.number_input("Ціль NO3 (мг/л)", value=15.0)
+    target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0)
+    target_tds = st.number_input("Ціль TDS", value=120.0)
+    
+    st.divider()
+    st.subheader("📅 Прогноз")
+    days = st.slider("Днів прогнозу", 1, 14, 7)
 
-# ---------------- 2. ТЕСТИ ТА ПІДМІНА ----------------
-col_base1, col_base2 = st.columns(2)
+# ---------------- 2. ОСНОВНІ ПАРАМЕТРИ (ТЕСТИ) ----------------
+st.header("📋 Поточні параметри води")
+col_base1, col_base2, col_base3 = st.columns(3)
 
 with col_base1:
-    st.header("📋 Поточні тести")
-    c_t1, c_t2, c_t3 = st.columns(3)
-    no3 = c_t1.number_input("NO3 (мг/л)", value=10.0)
-    po4 = c_t2.number_input("PO4 (мг/л)", value=0.5)
-    k = c_t3.number_input("K (мг/л)", value=10.0)
-    
-    c_t4, c_t5, c_t6 = st.columns(3)
-    gh = c_t4.number_input("GH", value=6)
-    kh = c_t5.number_input("KH", value=4)
-    ph = c_t6.number_input("pH", value=6.8)
+    no3 = st.number_input("Тест NO3 (мг/л)", value=10.0)
+    po4 = st.number_input("Тест PO4 (мг/л)", value=0.5)
+    k = st.number_input("Тест K (мг/л)", value=10.0)
 
 with col_base2:
-    st.header("💧 Підміна води")
-    change_l = st.number_input("Літри підміни (л)", value=50.0)
-    c_w1, c_w2 = st.columns(2)
-    new_no3 = c_w1.number_input("NO3 у новій воді", value=0.0)
-    new_po4 = c_w2.number_input("PO4 у новій воді", value=0.0)
+    gh = st.number_input("GH (Загальна)", value=6)
+    kh = st.number_input("KH (Карбонатна)", value=4)
+    ph = st.number_input("pH (Кислотність)", value=6.8)
 
-# Розрахунок після підміни
-pct = change_l / tank_vol if tank_vol > 0 else 0
-after_no3 = no3 * (1 - pct) + (new_no3 * pct)
-after_po4 = po4 * (1 - pct) + (new_po4 * pct)
+with col_base3:
+    base_tds = st.number_input("Поточний TDS", value=150.0)
+    daily_no3 = st.number_input("Споживання NO3/день", value=2.0)
+    daily_po4 = st.number_input("Споживання PO4/день", value=0.1)
 
 st.divider()
 
-# ---------------- 3. ДОЗУВАННЯ ----------------
+# ---------------- 3. ПІДМІНА ТА РЕМІНЕРАЛІЗАЦІЯ ----------------
+st.header("💧 Підміна та Ремінералізація")
+col_w1, col_w2, col_w3 = st.columns(3)
+
+with col_w1:
+    change_l = st.number_input("Літри підміни (л)", value=50.0)
+    pct = change_l / tank_vol if tank_vol > 0 else 0
+    st.write(f"📊 Обсяг підміни: **{pct*100:.1f}%**")
+
+with col_w2:
+    water_no3 = st.number_input("NO3 у новій воді", value=0.0)
+    water_po4 = st.number_input("PO4 у новій воді", value=0.0)
+
+with col_w3:
+    water_tds = st.number_input("TDS нової води (після ремінералізації)", value=110.0)
+
+# Розрахунок після підміни
+after_no3 = no3 * (1 - pct) + (water_no3 * pct)
+after_po4 = po4 * (1 - pct) + (water_po4 * pct)
+after_tds = base_tds * (1 - pct) + (water_tds * pct)
+
+st.info(f"📉 **Прогноз після підміни:** NO3: {after_no3:.1f} | PO4: {after_po4:.2f} | **TDS: {after_tds:.0f}**")
+
+st.divider()
+
+# ---------------- 4. ДОЗУВАННЯ ДОБРИВ ----------------
 st.header("🧪 Дозування добрив (г/л)")
 c_d1, c_d2, c_d3, c_d4 = st.columns(4)
 
@@ -72,72 +97,67 @@ final_no3 = after_no3 + add_no3
 final_po4 = after_po4 + add_po4
 final_k = k + add_k
 
-st.divider()
-
-# ---------------- 4. СПОЖИВАННЯ ТА ПРОГНОЗ ----------------
-col_f1, col_f2 = st.columns([1, 2])
-
-with col_f1:
-    st.header("📉 Споживання")
-    daily_no3 = st.number_input("NO3 мг/л/день", value=2.0)
-    daily_po4 = st.number_input("PO4 мг/л/день", value=0.1)
-
-    # Аналіз CO2 та Редфілда
-    co2 = 3 * kh * (10**(7 - ph))
-    ratio = final_no3 / final_po4 if final_po4 > 0 else 0
-    k_target = gh * 1.5
-
-with col_f2:
-    st.header("📈 Прогноз динаміки")
-    forecast = []
-    for d in range(days + 1):
-        forecast.append({
-            "День": d,
-            "NO3 (Нітрат)": max(final_no3 - daily_no3 * d, 0),
-            "PO4 (Фосфат)": max(final_po4 - daily_po4 * d, 0)
-        })
-    df = pd.DataFrame(forecast).set_index("День")
-    st.line_chart(df)
+# ---------------- 5. ГРАФІК ПРОГНОЗУ ----------------
+st.header("📈 Прогноз динаміки споживання")
+forecast = []
+for d in range(days + 1):
+    forecast.append({
+        "День": d,
+        "NO3": max(final_no3 - daily_no3 * d, 0),
+        "PO4": max(final_po4 - daily_po4 * d, 0)
+    })
+df = pd.DataFrame(forecast).set_index("День")
+st.line_chart(df)
 
 st.divider()
 
-# ---------------- 5. ЕКСПЕРТНИЙ АНАЛІЗ TOXICODE ----------------
-st.header("📊 Аналіз та Рекомендації")
-res1, res2, res3 = st.columns(3)
+# ---------------- 6. АНАЛІЗ ТА ПЛАН ДІЙ ----------------
+st.header("📊 Аналіз та Рекомендації Toxicode")
+res1, res2, res3, res4 = st.columns(4)
 
-# Панель CO2
+co2 = 3 * kh * (10**(7 - ph))
+ratio = final_no3 / final_po4 if final_po4 > 0 else 0
+k_target = gh * 1.5
+
 with res1:
     st.metric("CO2 (мг/л)", f"{co2:.1f}")
-    if co2 > 40: st.error("Критичний рівень CO2!")
-    elif 15 <= co2 <= 35: st.success("CO2 в нормі")
-    else: st.warning("Недостатньо CO2")
+    if 15 <= co2 <= 35: st.success("CO2 OK")
+    else: st.warning("Перевірте CO2")
 
-# Панель NO3/PO4
 with res2:
-    st.metric("Співвідношення Редфілда", f"{ratio:.1f}")
-    if 10 <= ratio <= 22: st.success("Ідеальний баланс")
-    elif ratio < 10: st.error("Ризик синьо-зелених (мало N)")
-    else: st.warning("Ризик ксенококусу (мало P)")
+    st.metric("Редфілд", f"{ratio:.1f}")
+    if 10 <= ratio <= 22: st.success("Баланс OK")
+    else: st.error("Дисбаланс N/P")
 
-# Панель Калію
 with res3:
-    st.metric("Калій (K)", f"{final_k:.1f}", f"Ціль: {k_target:.1f}")
-    if final_k < k_target: st.error("Блокування азоту! Додайте K.")
-    else: st.success("Транспорт іонів OK")
+    st.metric("K/GH Баланс", f"{final_k:.1f}")
+    if final_k >= k_target: st.success("Транспорт OK")
+    else: st.error(f"Мало K (ціль {k_target})")
+
+with res4:
+    st.metric("Прогноз TDS", f"{after_tds:.0f}")
+    if abs(after_tds - target_tds) < 10: st.success("TDS в нормі")
+    else: st.info("TDS відхилено")
 
 st.divider()
 
-# ---------------- 6. РОЗУМНИЙ ПЛАН ДІЙ ----------------
-st.header("📝 План дій")
-future_no3 = df.iloc[-1]["NO3 (Нітрат)"]
+# РОЗУМНИЙ ПЛАН
+future_no3 = df.iloc[-1]["NO3"]
+future_po4 = df.iloc[-1]["PO4"]
 
-if future_no3 < target_no3:
-    need_mg_l = target_no3 - future_no3
-    need_ml = (need_mg_l * tank_vol) / conc_n if conc_n > 0 else 0
-    st.warning(f"⚠️ Через {days} днів нітрат впаде до {future_no3:.1f} мг/л.")
-    st.info(f"💡 Рекомендація: Додайте **{need_ml:.1f} мл** вашого добрива NO3, щоб вийти на ціль {target_no3} мг/л.")
-else:
-    st.success(f"✅ Баланс стабільний. Через {days} днів нітрат буде на рівні {future_no3:.1f} мг/л.")
+col_plan1, col_plan2 = st.columns(2)
 
-if add_fe > 0:
-    st.caption(f"Доза заліза (Fe): {add_fe:.2f} мг/л внесена в систему.")
+with col_plan1:
+    st.subheader("📍 Стан на кінець прогнозу")
+    if future_no3 < target_no3:
+        need_n = (target_no3 - future_no3) * tank_vol / conc_n
+        st.warning(f"Додати **{need_n:.1f} мл** NO3 для цілі {target_no3} мг/л")
+    else:
+        st.success("Нітратів достатньо")
+
+with col_plan2:
+    if future_po4 < target_po4:
+        need_p = (target_po4 - future_po4) * tank_vol / conc_p
+        st.warning(f"Додати **{need_p:.1f} мл** PO4 для цілі {target_po4} мг/л")
+    else:
+        st.success("Фосфатів достатньо")
