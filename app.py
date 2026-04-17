@@ -92,7 +92,7 @@ forecast = [{"День": d, "NO3": max(start_no3 - daily_no3*d, 0), "PO4": max(s
 st.line_chart(pd.DataFrame(forecast).set_index("День"))
 
 # ---------------- 6. ВИСНОВОК ТА ПЛАН ----------------
-st.header("📝 4. Експертний висновок")
+st.header("📝 4. Висновок")
 
 def get_ml(curr, target, conc, vol):
     return ((target - curr) * vol) / conc if curr < target else 0
