@@ -81,4 +81,20 @@ if co2 > 45:
 elif 20 <= co2 <= 35:
     st.success(f"🟢 ПАНЕЛЬ А (CO2): Оптимально ({co2:.1f} ppm).")
 else:
-    st.warning(f"🟡 ПАНЕЛЬ А (CO2): Низький рів
+    st.warning(f"🟡 ПАНЕЛЬ А (CO2): Низький рівень ({co2:.1f} ppm).")
+
+# Редфілд Аналіз
+if 15 <= redfield <= 22:
+    st.success(f"✅ ПАНЕЛЬ Б (Редфілд): Співвідношення {redfield:.1f} — Ідеально.")
+else:
+    st.info(f"📊 ПАНЕЛЬ Б (Редфілд): Співвідношення {redfield:.1f}. Ціль: 16-20.")
+
+# K:GH Аналіз
+is_blocked = gh > 8 and total_k < k_target
+if is_blocked:
+    st.error(f"🚫 ПАНЕЛЬ В (Транспорт): Блокування! Ціль: >{k_target:.1f}. Зараз: {total_k:.1f}")
+else:
+    st.success(f"💎 ПАНЕЛЬ В (Транспорт): Співвідношення K/GH у нормі.")
+
+if added_fe > 0:
+    st.info(f"🧬 Додано заліза: {added_fe:.2f} мг/л.")
