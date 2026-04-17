@@ -1,8 +1,35 @@
 import streamlit as st
 import pandas as pd
+import json
+import os
 
-st.set_page_config(page_title="Toxicode Aquarium System V9.5", layout="wide")
-st.title("🌿 Toxicode Aquarium System V9.5 — C:N:P:K + Повний контроль")
+st.set_page_config(page_title="Toxicode Aquarium System V9.6", layout="wide")
+st.title("🌿 Toxicode Aquarium System V9.6 — Повний контроль + Збереження даних")
+
+# ======================== ЗБЕРЕЖЕННЯ ПАРАМЕТРІВ ========================
+CONFIG_FILE = "aquarium_config.json"
+
+def load_config():
+    """Завантажує збережені параметри з файлу"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_config(config):
+    """Зберігає параметри у файл"""
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except:
+        return False
+
+# Завантажуємо збережені параметри
+saved_config = load_config()
 
 # ======================== HELPER FUNCTIONS ========================
 def clamp(v, min_v, max_v):
@@ -34,22 +61,13 @@ def get_optimal_k_range(gh):
     }
 
 def calculate_cnpk_status(carbon_estimate, no3, po4, k):
-    """
-    Оцінка співвідношення C:N:P:K
-    Повертає словник зі статусами та рекомендаціями
-    """
-    # Цільові співвідношення (молярні) для водних рослин
-    # C:N:P:K ≈ 500:30:1:15 (масове співвідношення приблизне)
-    # Переводимо в масове для зручності
-    
-    # Якщо є оцінка вуглецю (з CO₂)
+    """Оцінка співвідношення C:N:P:K"""
     if carbon_estimate > 0:
         c_ratio = carbon_estimate / po4 if po4 > 0 else 999
         c_status = "норма" if 200 < c_ratio < 600 else "дефіцит C" if c_ratio <= 200 else "надлишок C"
     else:
         c_status = "невідомо (потрібен тест CO₂)"
     
-    # N:P
     np_ratio = no3 / po4 if po4 > 0 else 999
     if np_ratio < 10:
         np_status = "дефіцит N"
@@ -58,7 +76,6 @@ def calculate_cnpk_status(carbon_estimate, no3, po4, k):
     else:
         np_status = "баланс"
     
-    # K відносно N (K:N масове ≈ 0.5-1.0)
     kn_ratio = k / no3 if no3 > 0 else 999
     if kn_ratio < 0.3:
         k_status = "дефіцит K"
@@ -92,28 +109,88 @@ def get_liebig_metrics(co2, no3, po4, k, fe, targets):
         "Fe": min(fe / targets['fe'], 1.5) if targets['fe'] > 0 else 0
     }
 
+# ======================== КНОПКА ЗБЕРЕЖЕННЯ ВСІХ ПАРАМЕТРІВ ========================
+col_save1, col_save2, col_save3 = st.columns([3, 1, 1])
+with col_save2:
+    if st.button("💾 Зберегти всі параметри", use_container_width=True):
+        # Збираємо всі поточні значення з session_state
+        current_config = {
+            'tank_vol': st.session_state.get('tank_vol', 200),
+            'target_no3': st.session_state.get('target_no3', 15),
+            'target_po4': st.session_state.get('target_po4', 1.0),
+            'target_k': st.session_state.get('target_k', 15),
+            'target_fe': st.session_state.get('target_fe', 0.1),
+            'target_tds': st.session_state.get('target_tds', 120),
+            'custom_redfield': st.session_state.get('custom_redfield', 15),
+            'co2_min_opt': st.session_state.get('co2_min_opt', 25),
+            'co2_max_opt': st.session_state.get('co2_max_opt', 45),
+            'days': st.session_state.get('days', 7),
+            'no3_now': st.session_state.get('no3_now', 10),
+            'po4_now': st.session_state.get('po4_now', 0.5),
+            'k_now': st.session_state.get('k_now', 10),
+            'fe_now': st.session_state.get('fe_now', 0.05),
+            'base_tds': st.session_state.get('base_tds', 150),
+            'gh': st.session_state.get('gh', 6),
+            'kh': st.session_state.get('kh', 2),
+            'ph': st.session_state.get('ph', 6.8),
+            'ca_calc': st.session_state.get('ca_calc', 30),
+            'mg_calc': st.session_state.get('mg_calc', 10),
+            'daily_no3': st.session_state.get('daily_no3', 2.0),
+            'daily_po4': st.session_state.get('daily_po4', 0.1),
+            'daily_k': st.session_state.get('daily_k', 1.0),
+            'change_l': st.session_state.get('change_l', 50),
+            'water_no3': st.session_state.get('water_no3', 0),
+            'water_po4': st.session_state.get('water_po4', 0),
+            'water_k': st.session_state.get('water_k', 0),
+            'water_tds': st.session_state.get('water_tds', 110),
+            'conc_n': st.session_state.get('conc_n', 50),
+            'current_dose_n_ml': st.session_state.get('current_dose_n_ml', 0),
+            'conc_p': st.session_state.get('conc_p', 5),
+            'current_dose_p_ml': st.session_state.get('current_dose_p_ml', 0),
+            'conc_k': st.session_state.get('conc_k', 20),
+            'current_dose_k_ml': st.session_state.get('current_dose_k_ml', 0),
+            'conc_fe': st.session_state.get('conc_fe', 1),
+            'current_dose_fe_ml': st.session_state.get('current_dose_fe_ml', 0),
+            'target_gh': st.session_state.get('target_gh', 6),
+            'target_kh': st.session_state.get('target_kh', 2),
+            'target_ca_mg_ratio': st.session_state.get('target_ca_mg_ratio', 3),
+            'rem_vol': st.session_state.get('rem_vol', 10)
+        }
+        if save_config(current_config):
+            st.toast("✅ Параметри збережено!", icon="✅")
+        else:
+            st.error("❌ Помилка збереження")
+
+with col_save3:
+    if st.button("🔄 Скинути всі", use_container_width=True):
+        # Очищаємо session_state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+st.divider()
+
 # ======================== SIDEBAR — ГЛОБАЛЬНА КОНФІГУРАЦІЯ ========================
 with st.sidebar:
     st.header("📏 Конфігурація системи")
-    tank_vol = st.number_input("Чистий об'єм води (л)", value=200.0, step=1.0)
+    tank_vol = st.number_input("Чистий об'єм води (л)", value=saved_config.get('tank_vol', 200.0), step=1.0, key="tank_vol")
     
     st.divider()
     st.subheader("🎯 Цільові показники")
-    target_no3 = st.number_input("Ціль NO3 (мг/л)", value=15.0, step=1.0)
-    target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0, step=0.1)
-    target_k = st.number_input("Ціль K (мг/л)", value=15.0, step=1.0)
-    target_fe = st.number_input("Ціль Fe (мг/л)", value=0.1, step=0.05, help="Залізо для рослин")
-    target_tds = st.number_input("Ціль TDS", value=120.0, step=5.0)
+    target_no3 = st.number_input("Ціль NO3 (мг/л)", value=saved_config.get('target_no3', 15.0), step=1.0, key="target_no3")
+    target_po4 = st.number_input("Ціль PO4 (мг/л)", value=saved_config.get('target_po4', 1.0), step=0.1, key="target_po4")
+    target_k = st.number_input("Ціль K (мг/л)", value=saved_config.get('target_k', 15.0), step=1.0, key="target_k")
+    target_fe = st.number_input("Ціль Fe (мг/л)", value=saved_config.get('target_fe', 0.1), step=0.05, key="target_fe", help="Залізо для рослин")
+    target_tds = st.number_input("Ціль TDS", value=saved_config.get('target_tds', 120.0), step=5.0, key="target_tds")
     
     st.divider()
     st.subheader("⚙️ Розширені налаштування")
-    custom_redfield = st.slider("Бажана пропорція Редфілда (N:P)", 5, 30, 15)
+    custom_redfield = st.slider("Бажана пропорція Редфілда (N:P)", 5, 30, saved_config.get('custom_redfield', 15), key="custom_redfield")
     
-    # CO₂ слайдери — тепер 0-100
-    co2_min_opt = st.slider("Нижня межа CO₂ (мг/л)", 0, 100, 25)
-    co2_max_opt = st.slider("Верхня межа CO₂ (мг/л)", 0, 100, 45)
+    co2_min_opt = st.slider("Нижня межа CO₂ (мг/л)", 0, 100, saved_config.get('co2_min_opt', 25), key="co2_min_opt")
+    co2_max_opt = st.slider("Верхня межа CO₂ (мг/л)", 0, 100, saved_config.get('co2_max_opt', 45), key="co2_max_opt")
     
-    days = st.slider("Період прогнозу (днів)", 1, 14, 7)
+    days = st.slider("Період прогнозу (днів)", 1, 14, saved_config.get('days', 7), key="days")
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР (РОЗУМНИЙ РОЗРАХУНОК) ========================
 st.header("💎 1. Ремінералізатор (Розумний розрахунок)")
@@ -126,92 +203,52 @@ with st.expander("Розрахунок солей для підміни", expand
     col_rem1, col_rem2 = st.columns(2)
     
     with col_rem1:
-        c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
+        c_vol = st.number_input("Літрів свіжої води (осмос)", value=saved_config.get('rem_vol', 10.0), step=5.0, key="rem_vol")
         
         st.divider()
         st.subheader("🎯 Цільові параметри")
         
-        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=6.0, step=0.5,
+        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=saved_config.get('target_gh', 6.0), step=0.5, key="target_gh",
                               help="Загальна жорсткість (кальцій + магній)")
         
-        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=2.0, step=0.5,
+        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=saved_config.get('target_kh', 2.0), step=0.5, key="target_kh",
                               help="Карбонатна жорсткість (буферна ємність)")
         
-        target_ca_mg_ratio = st.slider("Цільове співвідношення Ca:Mg", min_value=1.0, max_value=6.0, value=3.0, step=0.5,
+        target_ca_mg_ratio = st.slider("Цільове співвідношення Ca:Mg", min_value=1.0, max_value=6.0, value=saved_config.get('target_ca_mg_ratio', 3.0), step=0.5, key="target_ca_mg_ratio",
                                        help="Оптимальне співвідношення для більшості рослин 3:1")
         
     with col_rem2:
         st.subheader("🧪 Розрахований склад")
         
-        # ========== ХІМІЧНІ КОНСТАНТИ ==========
-        # 1°dH = 7.14 мг/л CaO або 10 мг/л CaO
-        # Перерахунок: 1°dH = 7.14 mg/L CaO = 5.1 mg/L Ca (бо CaO містить 71.5% Ca)
-        # 1°dH = 4.34 mg/L Mg (з MgO)
+        # Хімічні константи
+        kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)
+        ca_from_caco3_g = kh_from_caco3 * 0.4
         
-        # Для простоти використовуємо стандарт: 1°dH = 7.14 мг/л CaO
-        # CaO містить 71.5% Ca → 1°dH = 5.1 мг/л Ca
-        # MgO містить 60.3% Mg → 1°dH = 4.3 мг/л Mg
+        # Розрахунок необхідного Ca та Mg
+        total_ca_mg_mgl = target_gh * 7.14
+        ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
+        mg_mgl = target_gh / ratio_factor
+        ca_mgl = target_ca_mg_ratio * mg_mgl
         
-        # Загальна кількість Ca + Mg (в мг/л) для досягнення GH
-        # 1°dH = 7.14 мг/л CaO (еквівалент)
-        total_ca_mg_mgl = target_gh * 7.14  # мг/л в еквіваленті CaO
-        
-        # Розраховуємо необхідну кількість Ca та Mg (в мг/л)
-        # Нехай x = мг/л Ca, y = мг/л Mg
-        # x/5.1 + y/4.3 = target_gh (бо кожен дає свій внесок у GH)
-        # x / y = target_ca_mg_ratio
-        
-        if target_ca_mg_ratio > 0:
-            # З пропорції: x = ratio * y
-            # Підставляємо: (ratio * y)/5.1 + y/4.3 = target_gh
-            # y * (ratio/5.1 + 1/4.3) = target_gh
-            ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
-            mg_mgl = target_gh / ratio_factor
-            ca_mgl = target_ca_mg_ratio * mg_mgl
-        else:
-            ca_mgl = target_gh * 5.1
-            mg_mgl = 0
-        
-        # Загальна кількість в грамах на заданий об'єм
         total_ca_g = ca_mgl * c_vol / 1000
         total_mg_g = mg_mgl * c_vol / 1000
         
-        # ========== ВИБІР ДЖЕРЕЛ ==========
-        st.markdown("**📦 Доступні солі:**")
-        
-        # CaCO3 (мол.маса 100, Ca = 40 → 40% Ca)
-        # Також дає KH: 1°dH KH = 17.86 мг/л CaCO3
-        kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)  # грами CaCO3 для KH
-        
-        # CaCO3 дає і Ca, і KH
-        ca_from_caco3_g = kh_from_caco3 * 0.4  # 40% кальцію
-        
-        # Залишок кальцію добиваємо CaCl2·2H2O (27.3% Ca)
         remaining_ca_g = max(0, total_ca_g - ca_from_caco3_g)
         cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
-        
-        # Магній з MgSO4·7H2O (9.86% Mg)
         mgso4_g = total_mg_g / 0.0986 if total_mg_g > 0 else 0
         
-        # ========== ВИВІД РЕЗУЛЬТАТІВ ==========
         st.success(f"""
         **Для {c_vol:.0f} л осмосу додай:**
         
         🧂 **{kh_from_caco3:.3f} г** $CaCO_3$ (кальцій карбонат)
-        → забезпечує KH = {target_kh:.1f}°dH та частину Ca
-        
         🧂 **{cacl2_g:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид)
-        → додає кальцій до потрібного рівня
-        
         🧂 **{mgso4_g:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат)
-        → забезпечує магній для балансу Ca:Mg
         """)
         
-        # ========== ПРОГНОЗ ПАРАМЕТРІВ ==========
+        # Прогноз параметрів
         st.divider()
         st.subheader("📊 Прогнозовані параметри")
         
-        # Перевірочний розрахунок
         predicted_ca_mgl = (ca_from_caco3_g + remaining_ca_g) * 1000 / c_vol
         predicted_mg_mgl = total_mg_g * 1000 / c_vol
         predicted_gh = (predicted_ca_mgl / 5.1) + (predicted_mg_mgl / 4.3)
@@ -224,28 +261,6 @@ with st.expander("Розрахунок солей для підміни", expand
             st.metric("KH", f"{target_kh:.1f}°dH", delta="від CaCO₃")
         with col_p3:
             st.metric("Ca:Mg", f"{predicted_ratio:.1f}:1", delta=f"ціль {target_ca_mg_ratio:.1f}:1")
-        
-        # ========== ПОПЕРЕДЖЕННЯ ==========
-        if cacl2_g < 0:
-            st.warning("⚠️ CaCO�3 дає більше кальцію ніж потрібно. Зменште GH або використайте інше джерело KH.")
-        
-        if mgso4_g < 0:
-            st.warning("⚠️ Недостатньо магнію. Збільште GH або зменште Ca:Mg.")
-        
-        # ========== ІНСТРУКЦІЯ ==========
-        with st.expander("📖 Інструкція приготування"):
-            st.markdown(f"""
-            1. **Підготуйте {c_vol:.0f} л осмосу** (або дистильованої води)
-            2. **Додайте солі** в такому порядку:
-               - $CaCO_3$ — важко розчиняється, залиште на 1-2 години
-               - $MgSO_4$ — добре розчиняється
-               - $CaCl_2$ — додайте останнім, швидко розчиняється
-            3. **Перемішайте** до повного розчинення
-            4. **Виміряйте TDS** — має бути ~{target_gh * 10 + target_kh * 5:.0f} ppm
-            5. **Додайте в акваріум** поступово (не більше 30% об'єму за раз)
-            
-            ⚡ **Порада:** Для прискорення розчинення CaCO₃ можна використати газовану воду або додати трохи CO₂.
-            """)
 
 # ======================== 2. КАЛЬКУЛЯТОР РЕАЛЬНОГО СПОЖИВАННЯ ========================
 st.header("📉 2. Калькулятор реального споживання (на основі тестів)")
@@ -280,23 +295,21 @@ st.header("📋 3. Поточні параметри води")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    no3_now = st.number_input("NO3 (мг/л)", value=10.0, step=1.0)
-    po4_now = st.number_input("PO4 (мг/л)", value=0.5, step=0.1)
-    k_now = st.number_input("K (мг/л)", value=10.0, step=1.0)
-    fe_now = st.number_input("Fe (мг/л)", value=0.05, step=0.01, help="Залізо")
-    base_tds = st.number_input("TDS", value=150.0, step=5.0)
+    no3_now = st.number_input("NO3 (мг/л)", value=saved_config.get('no3_now', 10.0), step=1.0, key="no3_now")
+    po4_now = st.number_input("PO4 (мг/л)", value=saved_config.get('po4_now', 0.5), step=0.1, key="po4_now")
+    k_now = st.number_input("K (мг/л)", value=saved_config.get('k_now', 10.0), step=1.0, key="k_now")
+    fe_now = st.number_input("Fe (мг/л)", value=saved_config.get('fe_now', 0.05), step=0.01, key="fe_now", help="Залізо")
+    base_tds = st.number_input("TDS", value=saved_config.get('base_tds', 150.0), step=5.0, key="base_tds")
 
 with col2:
-    gh = st.number_input("GH (°dH)", value=6, step=1, 
-                         help="1°dH = 7.14 мг/л CaO або 10 мг/л CaO")
-    kh = st.number_input("KH (°dH)", value=2, step=1)
-    ph = st.number_input("pH", value=6.8, step=0.1)
+    gh = st.number_input("GH (°dH)", value=saved_config.get('gh', 6), step=1, key="gh")
+    kh = st.number_input("KH (°dH)", value=saved_config.get('kh', 2), step=1, key="kh")
+    ph = st.number_input("pH", value=saved_config.get('ph', 6.8), step=0.1, key="ph")
     
-    # Аналіз Ca:Mg (приблизний)
     st.divider()
     st.caption("🧪 Співвідношення Ca:Mg")
-    ca_calc = st.number_input("Ca (мг/л)", value=30.0, step=5.0, help="Кальцій (тест або приблизно)")
-    mg_calc = st.number_input("Mg (мг/л)", value=10.0, step=2.0, help="Магній (тест або приблизно)")
+    ca_calc = st.number_input("Ca (мг/л)", value=saved_config.get('ca_calc', 30.0), step=5.0, key="ca_calc")
+    mg_calc = st.number_input("Mg (мг/л)", value=saved_config.get('mg_calc', 10.0), step=2.0, key="mg_calc")
     ca_mg_ratio = ca_calc / mg_calc if mg_calc > 0 else 0
     if 2.5 <= ca_mg_ratio <= 3.5:
         st.success(f"✅ Ca:Mg = {ca_mg_ratio:.1f}:1 (ціль 3:1)")
@@ -304,13 +317,13 @@ with col2:
         st.warning(f"⚠️ Ca:Mg = {ca_mg_ratio:.1f}:1 (коригуй ремінералізатором)")
 
 with col3:
-    default_no3_cons = consumption_results.get('NO3', 2.0)
-    default_po4_cons = consumption_results.get('PO4', 0.1)
-    default_k_cons = consumption_results.get('K', 1.0)
+    default_no3_cons = consumption_results.get('NO3', saved_config.get('daily_no3', 2.0))
+    default_po4_cons = consumption_results.get('PO4', saved_config.get('daily_po4', 0.1))
+    default_k_cons = consumption_results.get('K', saved_config.get('daily_k', 1.0))
     
-    daily_no3 = st.number_input("Споживання NO3 (мг/л/день)", value=default_no3_cons, step=0.1)
-    daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=default_po4_cons, step=0.1)
-    daily_k = st.number_input("Споживання K (мг/л/день)", value=default_k_cons, step=0.1)
+    daily_no3 = st.number_input("Споживання NO3 (мг/л/день)", value=default_no3_cons, step=0.1, key="daily_no3")
+    daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=default_po4_cons, step=0.1, key="daily_po4")
+    daily_k = st.number_input("Споживання K (мг/л/день)", value=default_k_cons, step=0.1, key="daily_k")
 
 # ======================== 4. ПІДМІНА ВОДИ ========================
 st.divider()
@@ -318,20 +331,19 @@ st.header("💧 4. Підміна води")
 c_change, c_quality = st.columns(2)
 
 with c_change:
-    change_l = st.number_input("Літри підміни", value=50.0, step=1.0)
+    change_l = st.number_input("Літри підміни", value=saved_config.get('change_l', 50.0), step=1.0, key="change_l")
     pct = change_l / tank_vol if tank_vol > 0 else 0
     st.metric("Відсоток підміни", f"{pct*100:.1f}%")
     
-    # Steady State розрахунок
     weekly_change_pct = pct * 7 if pct > 0 else 0
     steady_no3 = calculate_steady_state(daily_no3, weekly_change_pct)
     st.caption(f"📊 **Steady State NO₃:** {steady_no3:.0f} мг/л (рівноважна концентрація)")
 
 with c_quality:
-    water_no3 = st.number_input("NO3 у новій воді (мг/л)", value=0.0, step=0.5)
-    water_po4 = st.number_input("PO4 у новій воді (мг/л)", value=0.0, step=0.1)
-    water_k = st.number_input("K у новій воді (мг/л)", value=0.0, step=1.0)
-    water_tds = st.number_input("TDS нової води", value=110.0, step=5.0)
+    water_no3 = st.number_input("NO3 у новій воді (мг/л)", value=saved_config.get('water_no3', 0.0), step=0.5, key="water_no3")
+    water_po4 = st.number_input("PO4 у новій воді (мг/л)", value=saved_config.get('water_po4', 0.0), step=0.1, key="water_po4")
+    water_k = st.number_input("K у новій воді (мг/л)", value=saved_config.get('water_k', 0.0), step=1.0, key="water_k")
+    water_tds = st.number_input("TDS нової води", value=saved_config.get('water_tds', 110.0), step=5.0, key="water_tds")
 
 after_no3 = no3_now * (1 - pct) + water_no3 * pct
 after_po4 = po4_now * (1 - pct) + water_po4 * pct
@@ -346,23 +358,23 @@ st.caption("Концентрація готового розчину (г/л) т�
 cd_n, cd_p, cd_k, cd_fe = st.columns(4)
 
 with cd_n:
-    conc_n = st.number_input("N (NO3) г/л", value=50.0, step=5.0, key="conc_n")
-    current_dose_n_ml = st.number_input("Поточна доза N мл/день", value=0.0, step=1.0, key="dose_n")
+    conc_n = st.number_input("N (NO3) г/л", value=saved_config.get('conc_n', 50.0), step=5.0, key="conc_n")
+    current_dose_n_ml = st.number_input("Поточна доза N мл/день", value=saved_config.get('current_dose_n_ml', 0.0), step=1.0, key="current_dose_n_ml")
     add_no3 = (current_dose_n_ml * conc_n) / tank_vol
 
 with cd_p:
-    conc_p = st.number_input("P (PO4) г/л", value=5.0, step=0.5, key="conc_p")
-    current_dose_p_ml = st.number_input("Поточна доза P мл/день", value=0.0, step=0.5, key="dose_p")
+    conc_p = st.number_input("P (PO4) г/л", value=saved_config.get('conc_p', 5.0), step=0.5, key="conc_p")
+    current_dose_p_ml = st.number_input("Поточна доза P мл/день", value=saved_config.get('current_dose_p_ml', 0.0), step=0.5, key="current_dose_p_ml")
     add_po4 = (current_dose_p_ml * conc_p) / tank_vol
 
 with cd_k:
-    conc_k = st.number_input("K г/л", value=20.0, step=2.0, key="conc_k")
-    current_dose_k_ml = st.number_input("Поточна доза K мл/день", value=0.0, step=1.0, key="dose_k")
+    conc_k = st.number_input("K г/л", value=saved_config.get('conc_k', 20.0), step=2.0, key="conc_k")
+    current_dose_k_ml = st.number_input("Поточна доза K мл/день", value=saved_config.get('current_dose_k_ml', 0.0), step=1.0, key="current_dose_k_ml")
     add_k = (current_dose_k_ml * conc_k) / tank_vol
 
 with cd_fe:
-    conc_fe = st.number_input("Fe г/л", value=1.0, step=0.1, key="conc_fe")
-    current_dose_fe_ml = st.number_input("Поточна доза Fe мл/день", value=0.0, step=0.5, key="dose_fe")
+    conc_fe = st.number_input("Fe г/л", value=saved_config.get('conc_fe', 1.0), step=0.1, key="conc_fe")
+    current_dose_fe_ml = st.number_input("Поточна доза Fe мл/день", value=saved_config.get('current_dose_fe_ml', 0.0), step=0.5, key="current_dose_fe_ml")
     add_fe = (current_dose_fe_ml * conc_fe) / tank_vol
 
 final_no3 = after_no3 + add_no3
@@ -433,8 +445,6 @@ with col_n:
     st.metric("NO₃ (N)", f"{final_no3:.1f} мг/л")
     if cnpk_status['np_status'] == "дефіцит N":
         st.caption("🔴 Дефіцит N")
-    elif cnpk_status['np_status'] == "дефіцит P":
-        st.caption("🟡 Баланс N:P")
     else:
         st.caption("✅ N норма")
 
@@ -453,45 +463,6 @@ with col_k_bal:
         st.caption("🟡 Надлишок K")
     else:
         st.caption("✅ K норма")
-
-# Розширений аналіз C:N:P:K
-with st.expander("📊 Детальний аналіз C:N:P:K співвідношень"):
-    st.markdown(f"""
-    ### Поточні співвідношення
-    
-    | Співвідношення | Поточне | Оптимальне | Статус |
-    |----------------|---------|------------|--------|
-    | **N:P** | {cnpk_status['np_ratio']:.1f}:1 | 15:1 | {cnpk_status['np_status']} |
-    | **K:N** | {cnpk_status['kn_ratio']:.2f}:1 | 0.5–1.0:1 | {cnpk_status['k_status']} |
-    | **C:N** (оцінка) | {(co2_val/final_no3) if final_no3 > 0 else 0:.1f}:1 | 30–50:1 | залежить від CO₂ |
-    | **C:P** (оцінка) | {(co2_val/final_po4) if final_po4 > 0 else 0:.1f}:1 | 300–500:1 | залежить від CO₂ |
-    """)
-    
-    recommendations = []
-    
-    if co2_val < co2_min_opt:
-        recommendations.append(f"🔴 **Дефіцит вуглецю (C):** CO₂ = {co2_val:.1f} мг/л (норма {co2_min_opt}–{co2_max_opt}). Збільште подачу CO₂.")
-    elif co2_val > co2_max_opt:
-        recommendations.append(f"🟡 **Надлишок вуглецю (C):** CO₂ = {co2_val:.1f} мг/л. Можливий ризик для риб.")
-    else:
-        recommendations.append(f"✅ CO₂ в нормі: {co2_val:.1f} мг/л")
-    
-    if cnpk_status['np_status'] == "дефіцит N":
-        recommendations.append(f"🔴 **Дефіцит азоту (N):** N:P = {cnpk_status['np_ratio']:.1f}:1. Збільште дозу N добрива.")
-    elif cnpk_status['np_status'] == "дефіцит P":
-        recommendations.append(f"🔴 **Дефіцит фосфору (P):** N:P = {cnpk_status['np_ratio']:.1f}:1. Збільште дозу P добрива.")
-    else:
-        recommendations.append(f"✅ N:P баланс: {cnpk_status['np_ratio']:.1f}:1")
-    
-    if cnpk_status['k_status'] == "дефіцит K":
-        recommendations.append(f"🔴 **Дефіцит калію (K):** K:N = {cnpk_status['kn_ratio']:.2f}:1. Збільште дозу K добрива.")
-    elif cnpk_status['k_status'] == "надлишок K":
-        recommendations.append(f"🟡 **Надлишок калію (K):** K:N = {cnpk_status['kn_ratio']:.2f}:1 > 1.5. Зменште дозу K добрива.")
-    else:
-        recommendations.append(f"✅ K:N баланс: {cnpk_status['kn_ratio']:.2f}:1")
-    
-    for rec in recommendations:
-        st.write(rec)
 
 # ======================== 10. K/GH АНАЛІЗ ========================
 st.header("🧂 9. K/GH співвідношення — контроль антагонізму")
@@ -525,7 +496,7 @@ with col_k1:
     st.caption(f"GH = {gh} °dH")
 
 with col_k2:
-    st.metric("K/GH ratio", f"{k_gh_ratio:.2f}", delta=f"ціль {k_opt_range['target']/gh:.2f}", delta_color="off")
+    st.metric("K/GH ratio", f"{k_gh_ratio:.2f}")
 
 with col_k3:
     if final_k < k_opt_range['min']:
@@ -543,50 +514,6 @@ with col_k3:
         st.error("🚨 КРИТИЧНИЙ ПЕРЕДОЗИР K")
         st.write(f"Терміново знизьте K на {final_k - k_opt_range['max']:.1f} мг/л")
 
-# Діагностика за симптомами
-st.subheader("🌿 Діагностика за симптомами")
-tab_symptoms, tab_solutions, tab_chemistry = st.tabs(["Симптоми на рослинах", "Рішення", "Хімічний механізм"])
-
-with tab_symptoms:
-    st.markdown("""
-    | Стан | Старе листя | Молоде листя | Корені |
-    |------|-------------|--------------|--------|
-    | **Дефіцит K** | Жовті/бурі краї, дірки | Дрібне, світле | Слабкі, тонкі |
-    | **Надлишок K** | Темно-зелене, товсте | Скручене, білі кінчики | "Радікуліт" (гниль кінчиків) |
-    | **Антагонізм K/Ca** | Норма | Деформоване, відмираючі точки росту | Короткі, товсті |
-    """)
-
-with tab_solutions:
-    if final_k < k_opt_range['opt_low']:
-        st.info(f"""
-        **Рішення при дефіциті K:**
-        
-        - **Підніміть K на {k_opt_range['opt_low'] - final_k:.1f}–{k_opt_range['opt_high'] - final_k:.1f} мг/л**
-        - Додавайте K поступово, не більше ніж +5 мг/л за день
-        - Переконайтеся, що NO3 в нормі (зараз {final_no3:.1f} мг/л)
-        """)
-    elif final_k > k_opt_range['opt_high']:
-        st.warning(f"""
-        **Рішення при надлишку K:**
-        
-        - **Знизьте K на {final_k - k_opt_range['opt_high']:.1f} мг/л**
-        - Припиніть додавати K-вмісні добрива на 1-2 тижні
-        - Зробіть підміну 30-50% води
-        """)
-    else:
-        st.success("✅ K/GH в ідеальному балансі. Продовжуйте поточне дозування.")
-
-with tab_chemistry:
-    st.markdown(f"""
-    ### ⚡ Механізм антагонізму K/Ca/Mg
-    
-    **Ваші показники:**
-    - GH = {gh} °dH
-    - K = {final_k:.1f} мг/л
-    - K/GH = {k_gh_ratio:.2f}
-    - Статус: {"⚠️ Ризик антагонізму" if k_gh_ratio > 2.5 else "✅ Безпечно" if k_gh_ratio <= 2.5 else "🔴 Критично"}
-    """)
-
 # ======================== 11. ПЛАН КОРЕКЦІЇ ========================
 st.divider()
 st.header("📅 10. План корекції дозування")
@@ -601,43 +528,34 @@ if delta_no3 > 0:
     daily_delta_no3 = delta_no3 / days
     change_n_ml = (daily_delta_no3 * tank_vol) / conc_n if conc_n > 0 else 0
     new_dose_n = current_dose_n_ml + change_n_ml
-    correction_text_n = f"+{change_n_ml:.1f} мл/день"
 elif delta_no3 < 0:
     daily_delta_no3 = abs(delta_no3) / days
     reduce_n_ml = (daily_delta_no3 * tank_vol) / conc_n if conc_n > 0 else 0
     new_dose_n = max(0, current_dose_n_ml - reduce_n_ml)
-    correction_text_n = f"-{reduce_n_ml:.1f} мл/день"
 else:
     new_dose_n = current_dose_n_ml
-    correction_text_n = "без змін"
 
 if delta_po4 > 0:
     daily_delta_po4 = delta_po4 / days
     change_p_ml = (daily_delta_po4 * tank_vol) / conc_p if conc_p > 0 else 0
     new_dose_p = current_dose_p_ml + change_p_ml
-    correction_text_p = f"+{change_p_ml:.2f} мл/день"
 elif delta_po4 < 0:
     daily_delta_po4 = abs(delta_po4) / days
     reduce_p_ml = (daily_delta_po4 * tank_vol) / conc_p if conc_p > 0 else 0
     new_dose_p = max(0, current_dose_p_ml - reduce_p_ml)
-    correction_text_p = f"-{reduce_p_ml:.2f} мл/день"
 else:
     new_dose_p = current_dose_p_ml
-    correction_text_p = "без змін"
 
 if delta_k > 0:
     daily_delta_k = delta_k / days
     change_k_ml = (daily_delta_k * tank_vol) / conc_k if conc_k > 0 else 0
     new_dose_k = current_dose_k_ml + change_k_ml
-    correction_text_k = f"+{change_k_ml:.1f} мл/день"
 elif delta_k < 0:
     daily_delta_k = abs(delta_k) / days
     reduce_k_ml = (daily_delta_k * tank_vol) / conc_k if conc_k > 0 else 0
     new_dose_k = max(0, current_dose_k_ml - reduce_k_ml)
-    correction_text_k = f"-{reduce_k_ml:.1f} мл/день"
 else:
     new_dose_k = current_dose_k_ml
-    correction_text_k = "без змін"
 
 col_rec1, col_rec2, col_rec3 = st.columns(3)
 
@@ -646,7 +564,7 @@ with col_rec1:
     st.metric("Поточна доза", f"{current_dose_n_ml:.1f} мл/день")
     if delta_no3 > 0:
         st.warning(f"📈 Дефіцит NO₃: {delta_no3:.1f} мг/л за {days} днів")
-        st.info(f"➕ Додайте {change_n_ml:.1f} мл/день до поточної дози")
+        st.info(f"➕ Додайте +{change_n_ml:.1f} мл/день")
     elif delta_no3 < 0:
         st.warning(f"📉 Надлишок NO₃: {abs(delta_no3):.1f} мг/л за {days} днів")
         st.info(f"➖ Зменште на {reduce_n_ml:.1f} мл/день")
@@ -659,7 +577,7 @@ with col_rec2:
     st.metric("Поточна доза", f"{current_dose_p_ml:.2f} мл/день")
     if delta_po4 > 0:
         st.warning(f"📈 Дефіцит PO₄: {delta_po4:.2f} мг/л за {days} днів")
-        st.info(f"➕ Додайте {change_p_ml:.2f} мл/день до поточної дози")
+        st.info(f"➕ Додайте +{change_p_ml:.2f} мл/день")
     elif delta_po4 < 0:
         st.warning(f"📉 Надлишок PO₄: {abs(delta_po4):.2f} мг/л за {days} днів")
         st.info(f"➖ Зменште на {reduce_p_ml:.2f} мл/день")
@@ -672,7 +590,7 @@ with col_rec3:
     st.metric("Поточна доза", f"{current_dose_k_ml:.1f} мл/день")
     if delta_k > 0:
         st.warning(f"📈 Дефіцит K: {delta_k:.1f} мг/л за {days} днів")
-        st.info(f"➕ Додайте {change_k_ml:.1f} мл/день до поточної дози")
+        st.info(f"➕ Додайте +{change_k_ml:.1f} мл/день")
     elif delta_k < 0:
         st.warning(f"📉 Надлишок K: {abs(delta_k):.1f} мг/л за {days} днів")
         st.info(f"➖ Зменште на {reduce_k_ml:.1f} мл/день")
@@ -698,9 +616,9 @@ with col_summary1:
     st.subheader("📊 Стан системи")
     
     if co2_val < co2_min_opt:
-        st.warning(f"💨 CO₂: {co2_val:.1f} мг/л — дефіцит (норма {co2_min_opt}–{co2_max_opt})")
+        st.warning(f"💨 CO₂: {co2_val:.1f} мг/л — дефіцит (норма {co2_min_opt}-{co2_max_opt})")
     elif co2_val > co2_max_opt:
-        st.error(f"🐟 CO₂: {co2_val:.1f} мг/л — надлишок (норма {co2_min_opt}–{co2_max_opt})")
+        st.error(f"🐟 CO₂: {co2_val:.1f} мг/л — надлишок (норма {co2_min_opt}-{co2_max_opt})")
     else:
         st.success(f"✅ CO₂: {co2_val:.1f} мг/л — норма")
     
@@ -724,11 +642,11 @@ with col_summary2:
     st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", delta=f"{f_end['PO4'] - target_po4:.2f}")
     st.metric("K", f"{f_end['K']:.1f} мг/л", delta=f"{f_end['K'] - target_k:.1f}")
 
-# ======================== 13. ЗВІТ ДЛЯ КОПІЮВАННЯ ========================
+# ======================== 13. ЗВІТ ========================
 st.divider()
 st.subheader("📋 12. Звіт для журналу")
 
-report = f"""=== TOXICODE AQUARIUM V9.5 REPORT ===
+report = f"""=== TOXICODE AQUARIUM V9.6 REPORT ===
 📅 {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}
 
 ОСНОВНІ ПАРАМЕТРИ
@@ -758,9 +676,9 @@ PO4: {f_end['PO4']:.2f} мг/л
 K:   {f_end['K']:.1f} мг/л
 
 РЕКОМЕНДАЦІЯ ЗМІНИ ДОЗИ
-N: {current_dose_n_ml:.1f} -> {new_dose_n:.1f} мл/день ({correction_text_n})
-P: {current_dose_p_ml:.2f} -> {new_dose_p:.2f} мл/день ({correction_text_p})
-K: {current_dose_k_ml:.1f} -> {new_dose_k:.1f} мл/день ({correction_text_k})
+N: {current_dose_n_ml:.1f} -> {new_dose_n:.1f} мл/день
+P: {current_dose_p_ml:.2f} -> {new_dose_p:.2f} мл/день
+K: {current_dose_k_ml:.1f} -> {new_dose_k:.1f} мл/день
 ====================================="""
 
 st.code(report, language="text")
@@ -787,4 +705,4 @@ with st.expander("🛡️ Валідація та безпека"):
     if ca_mg_ratio < 2 or ca_mg_ratio > 4:
         st.warning("⚠️ Співвідношення Ca:Mg далеке від 3:1 — скоригуйте ремінералізатор")
 
-st.caption("⚡ Toxicode V9.5 | Повний контроль C:N:P:K | Закон Лібіха | Ремінералізатор | Динамічна корекція доз")
+st.caption("⚡ Toxicode V9.6 | Повний контроль C:N:P:K | Закон Лібіха | Автозбереження параметрів")
