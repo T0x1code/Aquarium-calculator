@@ -203,52 +203,92 @@ with st.expander("Розрахунок солей для підміни", expand
     col_rem1, col_rem2 = st.columns(2)
     
     with col_rem1:
-        c_vol = st.number_input("Літрів свіжої води (осмос)", value=saved_config.get('rem_vol', 10.0), step=5.0, key="rem_vol")
+        c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
         
         st.divider()
         st.subheader("🎯 Цільові параметри")
         
-        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=saved_config.get('target_gh', 6.0), step=0.5, key="target_gh",
+        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=6.0, step=0.5,
                               help="Загальна жорсткість (кальцій + магній)")
         
-        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=saved_config.get('target_kh', 2.0), step=0.5, key="target_kh",
+        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=2.0, step=0.5,
                               help="Карбонатна жорсткість (буферна ємність)")
         
-        target_ca_mg_ratio = st.slider("Цільове співвідношення Ca:Mg", min_value=1.0, max_value=6.0, value=saved_config.get('target_ca_mg_ratio', 3.0), step=0.5, key="target_ca_mg_ratio",
+        target_ca_mg_ratio = st.slider("Цільове співвідношення Ca:Mg", min_value=1.0, max_value=6.0, value=3.0, step=0.5,
                                        help="Оптимальне співвідношення для більшості рослин 3:1")
         
     with col_rem2:
         st.subheader("🧪 Розрахований склад")
         
-        # Хімічні константи
-        kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)
-        ca_from_caco3_g = kh_from_caco3 * 0.4
+        # ========== ХІМІЧНІ КОНСТАНТИ ==========
+        # 1°dH = 7.14 мг/л CaO або 10 мг/л CaO
+        # Перерахунок: 1°dH = 7.14 mg/L CaO = 5.1 mg/L Ca (бо CaO містить 71.5% Ca)
+        # 1°dH = 4.34 mg/L Mg (з MgO)
         
-        # Розрахунок необхідного Ca та Mg
-        total_ca_mg_mgl = target_gh * 7.14
-        ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
-        mg_mgl = target_gh / ratio_factor
-        ca_mgl = target_ca_mg_ratio * mg_mgl
+        # Для простоти використовуємо стандарт: 1°dH = 7.14 мг/л CaO
+        # CaO містить 71.5% Ca → 1°dH = 5.1 мг/л Ca
+        # MgO містить 60.3% Mg → 1°dH = 4.3 мг/л Mg
         
+        # Загальна кількість Ca + Mg (в мг/л) для досягнення GH
+        # 1°dH = 7.14 мг/л CaO (еквівалент)
+        total_ca_mg_mgl = target_gh * 7.14  # мг/л в еквіваленті CaO
+        
+        # Розраховуємо необхідну кількість Ca та Mg (в мг/л)
+        # Нехай x = мг/л Ca, y = мг/л Mg
+        # x/5.1 + y/4.3 = target_gh (бо кожен дає свій внесок у GH)
+        # x / y = target_ca_mg_ratio
+        
+        if target_ca_mg_ratio > 0:
+            # З пропорції: x = ratio * y
+            # Підставляємо: (ratio * y)/5.1 + y/4.3 = target_gh
+            # y * (ratio/5.1 + 1/4.3) = target_gh
+            ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
+            mg_mgl = target_gh / ratio_factor
+            ca_mgl = target_ca_mg_ratio * mg_mgl
+        else:
+            ca_mgl = target_gh * 5.1
+            mg_mgl = 0
+        
+        # Загальна кількість в грамах на заданий об'єм
         total_ca_g = ca_mgl * c_vol / 1000
         total_mg_g = mg_mgl * c_vol / 1000
         
+        # ========== ВИБІР ДЖЕРЕЛ ==========
+        st.markdown("**📦 Доступні солі:**")
+        
+        # CaCO3 (мол.маса 100, Ca = 40 → 40% Ca)
+        # Також дає KH: 1°dH KH = 17.86 мг/л CaCO3
+        kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)  # грами CaCO3 для KH
+        
+        # CaCO3 дає і Ca, і KH
+        ca_from_caco3_g = kh_from_caco3 * 0.4  # 40% кальцію
+        
+        # Залишок кальцію добиваємо CaCl2·2H2O (27.3% Ca)
         remaining_ca_g = max(0, total_ca_g - ca_from_caco3_g)
         cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
+        
+        # Магній з MgSO4·7H2O (9.86% Mg)
         mgso4_g = total_mg_g / 0.0986 if total_mg_g > 0 else 0
         
+        # ========== ВИВІД РЕЗУЛЬТАТІВ ==========
         st.success(f"""
         **Для {c_vol:.0f} л осмосу додай:**
         
         🧂 **{kh_from_caco3:.3f} г** $CaCO_3$ (кальцій карбонат)
+        → забезпечує KH = {target_kh:.1f}°dH та частину Ca
+        
         🧂 **{cacl2_g:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид)
+        → додає кальцій до потрібного рівня
+        
         🧂 **{mgso4_g:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат)
+        → забезпечує магній для балансу Ca:Mg
         """)
         
-        # Прогноз параметрів
+        # ========== ПРОГНОЗ ПАРАМЕТРІВ ==========
         st.divider()
         st.subheader("📊 Прогнозовані параметри")
         
+        # Перевірочний розрахунок
         predicted_ca_mgl = (ca_from_caco3_g + remaining_ca_g) * 1000 / c_vol
         predicted_mg_mgl = total_mg_g * 1000 / c_vol
         predicted_gh = (predicted_ca_mgl / 5.1) + (predicted_mg_mgl / 4.3)
@@ -261,6 +301,28 @@ with st.expander("Розрахунок солей для підміни", expand
             st.metric("KH", f"{target_kh:.1f}°dH", delta="від CaCO₃")
         with col_p3:
             st.metric("Ca:Mg", f"{predicted_ratio:.1f}:1", delta=f"ціль {target_ca_mg_ratio:.1f}:1")
+        
+        # ========== ПОПЕРЕДЖЕННЯ ==========
+        if cacl2_g < 0:
+            st.warning("⚠️ CaCO�3 дає більше кальцію ніж потрібно. Зменште GH або використайте інше джерело KH.")
+        
+        if mgso4_g < 0:
+            st.warning("⚠️ Недостатньо магнію. Збільште GH або зменште Ca:Mg.")
+        
+        # ========== ІНСТРУКЦІЯ ==========
+        with st.expander("📖 Інструкція приготування"):
+            st.markdown(f"""
+            1. **Підготуйте {c_vol:.0f} л осмосу** (або дистильованої води)
+            2. **Додайте солі** в такому порядку:
+               - $CaCO_3$ — важко розчиняється, залиште на 1-2 години
+               - $MgSO_4$ — добре розчиняється
+               - $CaCl_2$ — додайте останнім, швидко розчиняється
+            3. **Перемішайте** до повного розчинення
+            4. **Виміряйте TDS** — має бути ~{target_gh * 10 + target_kh * 5:.0f} ppm
+            5. **Додайте в акваріум** поступово (не більше 30% об'єму за раз)
+            
+            ⚡ **Порада:** Для прискорення розчинення CaCO₃ можна використати газовану воду або додати трохи CO₂.
+            """)
 
 # ======================== 2. КАЛЬКУЛЯТОР РЕАЛЬНОГО СПОЖИВАННЯ ========================
 st.header("📉 2. Калькулятор реального споживання (на основі тестів)")
