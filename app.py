@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Toxicode Aquarium System V7.7", layout="wide")
-st.title("🌿 Toxicode Aquarium System V7.7 Pro")
+st.set_page_config(page_title="Toxicode Aquarium System V7.8", layout="wide")
+st.title("🌿 Toxicode Aquarium System V7.8 Pro")
 
 # ---------------- 1. SIDEBAR: НАЛАШТУВАННЯ ТА ЦІЛІ ----------------
 with st.sidebar:
@@ -39,13 +39,10 @@ with st.expander("Розгорнути для аналізу минулого п
             ch_liters = col_low1.number_input(f"Літрів підмінено за цей час ({name})", value=0.0, step=1.0, key=f"ch_l_{key_p}")
             d_pass = col_low2.number_input("Днів між тестами", value=7, min_value=1, key=f"d_{key_p}")
             
-            # Розрахунок відсотка підміни
             p_pct = (ch_liters / tank_vol) if tank_vol > 0 else 0
-            # Формула: (Початок - те що винесли підміною + те що додали) - кінець / дні
             start_after_wash = p_test * (1 - p_pct)
             res = (start_after_wash + added - c_test) / d_pass
-            
-            st.info(f"**Реальне споживання {name}:** {max(res, 0):.2f} мг/л в день (Підміна склала {p_pct*100:.1f}%)")
+            st.info(f"**Реальне споживання {name}:** {max(res, 0):.2f} мг/л в день (Підміна: {p_pct*100:.1f}%)")
 
     calc_real_cons(t1, "NO3", "no3")
     calc_real_cons(t2, "PO4", "po4")
@@ -129,12 +126,12 @@ k_limit = gh * 1.5
 
 if co2_calc > co2_limit:
     res1.metric("CO2 (мг/л)", f"{co2_calc:.1f}", "⚠️ НАДЛИШОК", delta_color="inverse")
-    st.error(f"🔴 **УВАГА: Критичний рівень CO2 ({co2_calc:.1f} мг/л)!** Перевірте стан риб.")
+    st.error(f"🔴 **УВАГА: Високий CO2 ({co2_calc:.1f} мг/л)!**")
 else:
     res1.metric("CO2 (мг/л)", f"{co2_calc:.1f}")
 
 res2.metric("Редфілд (N:P)", f"{ratio_val:.1f}:1", f"Ціль {custom_redfield}:1", delta_color="off")
-res3.metric("K:GH", f"{start_k:.1f}", f"Мін: {k_limit:.1f}", help="Рівень калію, необхідний для підтримки метаболізму рослин при поточній жорсткості.")
+res3.metric("K:GH", f"{start_k:.1f}", f"Мін: {k_limit:.1f}", help="Рівень калію для метаболізму.")
 res4.metric("TDS прогноз", f"{after_tds:.0f}")
 
 st.divider()
@@ -146,28 +143,31 @@ f_po4_end = df_f.iloc[-1]["PO4"]
 f_k_end = df_f.iloc[-1]["K"]
 
 def get_ml_dose(curr, target, conc, vol):
-    return ((target - curr) * vol) / conc if curr < target else 0
+    if curr < target:
+        return ((target - curr) * vol) / conc
+    return 0.0
 
+# ТУТ БУЛА ПОМИЛКА: додано четвертий аргумент c_k
 ml_n_need = get_ml_dose(f_no3_end, target_no3, c_n, tank_vol)
 ml_p_need = get_ml_dose(f_po4_end, target_po4, c_p, tank_vol)
-ml_k_need = get_ml_dose(f_k_end, target_k, tank_vol) # Fix for K
+ml_k_need = get_ml_dose(f_k_end, target_k, c_k, tank_vol) 
 
 col_left, col_right = st.columns([1.5, 1])
 
 with col_left:
-    st.subheader(f"Коригування для досягнення цілей через {days} дн.")
+    st.subheader(f"Коригування доз (на {days} дн.)")
     if ml_n_need > 0: st.warning(f"**Азот (N):** Додати {ml_n_need:.1f} мл (або по {ml_n_need/days:.1f} мл/день)")
     if ml_p_need > 0: st.warning(f"**Фосфор (P):** Додати {ml_p_need:.1f} мл (або по {ml_p_need/days:.1f} мл/день)")
     if ml_k_need > 0: st.warning(f"**Калій (K):** Додати {ml_k_need:.1f} мл (або по {ml_k_need/days:.1f} мл/день)")
-    if not any([ml_n_need, ml_p_need, ml_k_need]): st.success("Поточного дозування достатньо для підтримки цільових рівнів!")
+    if not any([ml_n_need, ml_p_need, ml_k_need]): st.success("Запасів макро достатньо!")
 
 with col_right:
-    st.subheader("💡 Експертний висновок")
+    st.subheader("💡 Висновок")
     diag_msgs = []
-    if ratio_val < (custom_redfield - 5): diag_msgs.append("⚠️ Дисбаланс Редфілда: ризик спалаху синьо-зелених водоростей.")
-    elif ratio_val > (custom_redfield + 5): diag_msgs.append("⚠️ Дисбаланс Редфілда: ризик появи ксенококусу через дефіцит фосфату.")
-    if start_k < k_limit: diag_msgs.append("🚫 Калій нижче порогу! Це може блокувати засвоєння азоту навіть при його наявності.")
+    if ratio_val < (custom_redfield - 5): diag_msgs.append("⚠️ Ризик синьо-зелених (низький Редфілд).")
+    elif ratio_val > (custom_redfield + 5): diag_msgs.append("⚠️ Ризик ксенококусу (високий Редфілд).")
+    if start_k < k_limit: diag_msgs.append("🚫 Калій нижче порогу! Блокується засвоєння азоту.")
     
-    if not diag_msgs: st.success("🌟 Ваша аквасистема знаходиться в ідеальному балансі!")
+    if not diag_msgs: st.success("🌟 Система збалансована!")
     else:
         for m in diag_msgs: st.error(m)
