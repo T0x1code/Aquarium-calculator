@@ -1,222 +1,156 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Toxicode Aquarium System V9", layout="wide")
-st.title("🌿 Toxicode Aquarium System V9 Ecosystem Engine")
+st.set_page_config(page_title="Toxicode Aquarium System V8.6", layout="wide")
+st.title("🌿 Toxicode Aquarium System V8.6 Stability Engine")
 
-
-# ---------------- HELPERS ----------------
+# ---------------- HELPER ----------------
 def clamp(v, min_v, max_v):
     return max(min(v, max_v), min_v)
-
 
 def get_ml_dose(curr, target, conc, vol):
     return ((target - curr) * vol) / conc if curr < target else 0.0
 
-
-# ---------------- STABILITY + ECOSYSTEM ENGINE ----------------
-def ecosystem_engine(no3, po4, k, gh, kh, ph, redfield_target):
-
-    # --- nutrient stress ---
-    def nutrient_score(x, low, high):
-        if x < low:
-            return x / low if low > 0 else 0
-        if x > high:
-            return high / x
-        return 1.0
-
-    n_score = nutrient_score(no3, 5, 25)
-    p_score = nutrient_score(po4, 0.2, 1.5)
-    k_score = nutrient_score(k, 10, 30)
-
-    # --- Redfield ---
-    ratio = no3 / po4 if po4 > 0 else 0
-    redfield_score = 1 / (1 + abs((ratio - redfield_target) / redfield_target)) if redfield_target > 0 else 1
-
-    # --- CO2 stability ---
-    co2 = 3 * kh * (10 ** (7 - ph))
-    co2_score = 1.0 if 15 <= co2 <= 35 else 0.6
-
-    # --- final ecosystem stability ---
-    stability = (
-        0.35 * n_score +
-        0.25 * p_score +
-        0.15 * k_score +
-        0.25 * redfield_score
-    ) * co2_score
-
-    return clamp(stability, 0.05, 1.0), ratio, co2
-
-
-# ---------------- SIDEBAR ----------------
+# ---------------- 1. SIDEBAR ----------------
 with st.sidebar:
     st.header("📏 Конфігурація")
-    tank_vol = st.number_input("Чистий об'єм (л)", value=200.0)
+    tank_vol = st.number_input("Чистий об'єм води (л)", value=200.0, step=1.0)
+    st.divider()
+    st.subheader("🎯 Цільові значення")
+    target_no3 = st.number_input("Ціль NO3", value=15.0)
+    target_po4 = st.number_input("Ціль PO4", value=1.0)
+    target_k = st.number_input("Ціль K", value=15.0)
+    st.divider()
+    st.subheader("⚙️ Stability Engine Settings")
+    custom_redfield = st.slider("Цільовий Редфілд (N:1P)", 5, 30, 15)
+    days = st.slider("Прогноз (днів)", 1, 21, 7)
+    data_quality = st.slider("Якість даних", 0.5, 1.0, 0.85)
 
-    st.subheader("🎯 Цілі")
-    target_no3 = st.number_input("NO3 target", value=15.0)
-    target_po4 = st.number_input("PO4 target", value=1.0)
-    target_k = st.number_input("K target", value=15.0)
-
-    st.subheader("⚙️ Модель")
-    redfield_target = st.slider("Redfield (N:1P)", 5, 30, 15)
-    days = st.slider("Прогноз", 1, 14, 7)
-
-
-# ---------------- 1. CONSUMPTION ----------------
-st.header("📉 1. Споживання")
-
-consumption = {}
-
-with st.expander("Історичні дані"):
-    tabs = st.tabs(["NO3", "PO4", "K"])
-
-    def calc(tab, name, key):
+# ---------------- 2. СПОЖИВАННЯ ----------------
+st.header("📉 1. Аналіз споживання")
+consumption_results = {}
+with st.expander("Розрахувати споживання за тестами"):
+    t_tabs = st.tabs(["NO3", "PO4", "K"])
+    def calc_cons(tab, name, key):
         with tab:
             c1, c2, c3 = st.columns(3)
-
             start = c1.number_input(f"{name} старт", value=15.0, key=f"s_{key}")
-            end = c2.number_input(f"{name} кінець", value=10.0, key=f"e_{key}")
-            added = c3.number_input(f"Внесено {name}", value=0.0, key=f"a_{key}")
-
+            end = c2.number_input(f"{name} зараз", value=10.0, key=f"e_{key}")
+            added = c3.number_input(f"Внесено за період", value=0.0, key=f"a_{key}")
             c4, c5 = st.columns(2)
-            water = c4.number_input("Підміна (л)", value=0.0, key=f"w_{key}")
-            d = c5.number_input("Днів", value=7, min_value=1, key=f"d_{key}")
+            w_change = c4.number_input("Підміна (л)", value=0.0, key=f"w_{key}")
+            d_local = c5.number_input("Днів періоду", value=7, min_value=1, key=f"d_{key}")
+            pct = w_change / tank_vol if tank_vol > 0 else 0
+            cons = ((start * (1 - pct) + added - end) / d_local) * data_quality
+            val = max(cons, 0)
+            consumption_results[name] = val
+            st.info(f"**Споживання:** {val:.2f} мг/л/д")
 
-            pct = water / tank_vol if tank_vol > 0 else 0
+    calc_cons(t_tabs[0], "NO3", "no3")
+    calc_cons(t_tabs[1], "PO4", "po4")
+    calc_cons(t_tabs[2], "K", "k")
 
-            cons = (start * (1 - pct) + added - end) / d
-            consumption[name] = max(cons, 0)
-
-            st.info(f"{name}: {consumption[name]:.2f} мг/л/д")
-
-    calc(tabs[0], "NO3", "no3")
-    calc(tabs[1], "PO4", "po4")
-    calc(tabs[2], "K", "k")
-
-
-# ---------------- 2. STATE ----------------
-st.header("📋 2. Поточний стан")
-
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    no3 = st.number_input("NO3", value=10.0)
-    po4 = st.number_input("PO4", value=0.5)
-    k = st.number_input("K", value=10.0)
-
-with c2:
+# ---------------- 3. ПОТОЧНИЙ СТАН ТА МОДЕЛЬ ----------------
+st.header("📋 2. Поточний стан та Дозування")
+col1, col2, col3 = st.columns(3)
+with col1:
+    no3_now = st.number_input("Тест NO3", value=10.0)
+    po4_now = st.number_input("Тест PO4", value=0.5)
+    k_now = st.number_input("Тест K", value=10.0)
+with col2:
     gh = st.number_input("GH", value=6)
     kh = st.number_input("KH", value=3)
     ph = st.number_input("pH", value=6.8)
+with col3:
+    daily_no3 = st.number_input("Базове споживання NO3", value=consumption_results.get("NO3", 2.0))
+    daily_po4 = st.number_input("Базове споживання PO4", value=consumption_results.get("PO4", 0.1))
+    daily_k = st.number_input("Базове споживання K", value=consumption_results.get("K", 1.0))
 
-with c3:
-    d_no3 = st.number_input("NO3 споживання", value=consumption.get("NO3", 2.0))
-    d_po4 = st.number_input("PO4 споживання", value=consumption.get("PO4", 0.1))
-    d_k = st.number_input("K споживання", value=consumption.get("K", 1.0))
+# Stability Engine Logic
+ratio_now = no3_now / po4_now if po4_now > 0 else 0
+# Чим далі ми від цілі, тим нижча стабільність (від 0.0 до 1.0)
+ref_error = abs((ratio_now - custom_redfield) / custom_redfield)
+stability = 1 / (1 + ref_error)
 
+st.divider()
+st.subheader("🧪 План внесення (Daily Dosing)")
+d_col1, d_col2, d_col3 = st.columns(3)
+c_n, d_ml_n = d_col1.number_input("N г/л", value=50.0), d_col1.number_input("Щоденна доза N (мл)", value=0.0)
+c_p, d_ml_p = d_col2.number_input("P г/л", value=5.0), d_col2.number_input("Щоденна доза P (мл)", value=0.0)
+c_k, d_ml_k = d_col3.number_input("K г/л", value=20.0), d_col3.number_input("Щоденна доза K (мл)", value=0.0)
 
-# ---------------- ENGINE ----------------
-stability, ratio, co2 = ecosystem_engine(no3, po4, k, gh, kh, ph, redfield_target)
-
-
-# ---------------- 3. DOSING ----------------
-st.header("💧 Внесення")
-
-change = st.number_input("Підміна (л)", value=50.0)
-pct = change / tank_vol if tank_vol > 0 else 0
-
-no3 = no3 * (1 - pct)
-po4 = po4 * (1 - pct)
-k = k * (1 - pct)
-
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    cn = st.number_input("N г/л", value=50.0)
-    dn = st.number_input("N мл", value=0.0)
-
-with c2:
-    cp = st.number_input("P г/л", value=5.0)
-    dp = st.number_input("P мл", value=0.0)
-
-with c3:
-    ck = st.number_input("K г/л", value=20.0)
-    dk = st.number_input("K мл", value=0.0)
-
-start_n = no3 + (dn * cn / tank_vol)
-start_p = po4 + (dp * cp / tank_vol)
-start_k = k + (dk * ck / tank_vol)
-
-
-# ---------------- 4. ZERO CROSS SIMULATION ----------------
-st.header("📈 3. Прогноз (Ecosystem Simulation)")
+# ---------------- 4. ДИНАМІЧНИЙ ПРОГНОЗ ----------------
+st.header("📈 3. Динамічний прогноз")
 
 forecast = []
-
-n, p, k_ = start_n, start_p, start_k
-
-warn = {"NO3": None, "PO4": None, "K": None}
+curr_n, curr_p, curr_k = no3_now, po4_now, k_now
+warns = {"N": None, "P": None, "K": None}
 
 for d in range(days + 1):
+    forecast.append({"День": d, "NO3": curr_n, "PO4": curr_p, "K": curr_k})
+    
+    # Перевірка на виснаження (твій код)
+    if warns["N"] is None and curr_n <= 0.1: warns["N"] = d
+    if warns["P"] is None and curr_p <= 0.01: warns["P"] = d
+    if warns["K"] is None and curr_k <= 0.1: warns["K"] = d
 
-    forecast.append({"Day": d, "NO3": n, "PO4": p, "K": k_})
+    # Розрахунок змін (Stability Engine впливає на споживання)
+    # 1. Додаємо щоденну дозу
+    curr_n += (d_ml_n * c_n / tank_vol)
+    curr_p += (d_ml_p * c_p / tank_vol)
+    curr_k += (d_ml_k * c_k / tank_vol)
+    
+    # 2. Віднімаємо споживання, скориговане стабільністю
+    curr_n -= (daily_no3 * stability)
+    curr_p -= (daily_po4 * stability)
+    curr_k -= (daily_k * stability)
 
-    if warn["NO3"] is None and n < 3:
-        warn["NO3"] = d
-    if warn["PO4"] is None and p < 0.2:
-        warn["PO4"] = d
-    if warn["K"] is None and k_ < 8:
-        warn["K"] = d
+    curr_n, curr_p, curr_k = clamp(curr_n, 0, 100), clamp(curr_p, 0, 10), clamp(curr_k, 0, 100)
 
-    # cycle
-    n += (dn * cn / tank_vol)
-    p += (dp * cp / tank_vol)
-    k_ += (dk * ck / tank_vol)
+st.line_chart(pd.DataFrame(forecast).set_index("День"))
 
-    n -= d_no3
-    p -= d_po4
-    k_ -= d_k
+# Вивід попереджень
+if any(warns.values()):
+    c_w1, c_w2, c_w3 = st.columns(3)
+    if warns["N"]: c_w1.error(f"⚠️ NO3 виснажиться на {warns['N']} день")
+    if warns["P"]: c_w2.error(f"⚠️ PO4 виснажиться на {warns['P']} day")
+    if warns["K"]: c_w3.warning(f"⚠️ K виснажиться на {warns['K']} день")
 
-    n = clamp(n, 0, 100)
-    p = clamp(p, 0, 10)
-    k_ = clamp(k_, 0, 100)
+# ---------------- 5. АНАЛІЗ ТА РЕКОМЕНДАЦІЇ ----------------
+st.header("📊 4. Експертний аналіз")
+co2_val = 3 * kh * (10 ** (7 - ph))
+k_min = gh * 1.5
 
-df = pd.DataFrame(forecast)
-st.line_chart(df.set_index("Day"))
+col_adv, col_rep = st.columns([1.3, 1])
 
-st.subheader("⚠️ Виснаження")
-st.write(warn)
+with col_adv:
+    st.subheader("💡 Поради")
+    st.write(f"**Stability Engine Score:** `{stability:.2f}`")
+    
+    if stability < 0.7:
+        st.warning("🔄 **Низька стабільність:** Модель прогнозує уповільнення росту рослин через дисбаланс.")
+    
+    if ratio_now < custom_redfield:
+        st.error(f"⚖️ **Дисбаланс:** Мало Азоту. Додайте {( (po4_now*custom_redfield)-no3_now )*tank_vol/c_n:.1f} мл N для вирівняння.")
+    elif ratio_now > custom_redfield:
+        st.error(f"⚖️ **Дисбаланс:** Мало Фосфору. Додайте {( (no3_now/custom_redfield)-po4_now )*tank_vol/c_p:.1f} мл P для вирівняння.")
 
+    # Розрахунок дози до цілі (Target)
+    f_end = forecast[-1]
+    ml_n_t = get_ml_dose(f_end["NO3"], target_no3, c_n, tank_vol)
+    ml_p_t = get_ml_dose(f_end["PO4"], target_po4, c_p, tank_vol)
+    ml_k_t = get_ml_dose(f_end["K"], target_k, c_k, tank_vol)
 
-# ---------------- 5. ANALYSIS ----------------
-st.header("📊 4. Аналіз")
+    st.success(f"""**📦 План корекції (щоб вийти на ціль через {days} дн.):**
+* Додатково N: {ml_n_t/days:.1f} мл/день (Разом: {ml_n_t:.1f})
+* Додатково P: {ml_p_t/days:.1f} мл/день (Разом: {ml_p_t:.1f})
+* Додатково K: {ml_k_t/days:.1f} мл/день (Разом: {ml_k_t:.1f})""")
 
-st.metric("Ecosystem Stability", f"{stability:.2f}")
-st.metric("Redfield Ratio", f"{ratio:.1f}:1")
-st.metric("CO2", f"{co2:.1f} mg/L")
-
-if stability < 0.4:
-    st.error("Система нестабільна — високий ризик водоростей")
-
-if ratio < redfield_target:
-    st.warning("Дефіцит NO3 відносно PO4")
-
-if ratio > redfield_target:
-    st.warning("Дефіцит PO4 відносно NO3")
-
-
-# ---------------- 6. DOSING PLAN ----------------
-st.header("📦 Рекомендації")
-
-f = df.iloc[-1]
-
-ml_n = get_ml_dose(f["NO3"], target_no3, cn, tank_vol)
-ml_p = get_ml_dose(f["PO4"], target_po4, cp, tank_vol)
-ml_k = get_ml_dose(f["K"], target_k, ck, tank_vol)
-
-st.write(f"""
-N: {ml_n:.1f} мл
-P: {ml_p:.1f} мл
-K: {ml_k:.1f} мл
-""")
+with col_rep:
+    st.subheader("📋 Звіт")
+    report = f"""--- AQUA REPORT V8.6 ---
+[ПАРАМЕТРИ] GH:{gh} | KH:{kh} | TDS:{base_tds} | CO2:{co2_val:.1f}
+[МОДЕЛЬ] Redfield:{ratio_now:.1f}:1 | Stability:{stability:.2f}
+[ПРОГНОЗ {days}д] NO3:{f_end['NO3']:.1f} | PO4:{f_end['PO4']:.1f}
+-----------------------"""
+    st.code(report, language="text")
