@@ -33,6 +33,30 @@ def get_optimal_k_range(gh):
         'target': gh * 1.8
     }
 
+def calculate_steady_state(daily_dose, weekly_change_pct):
+    """Розрахунок теоретичного максимуму накопичення елемента"""
+    if weekly_change_pct <= 0: return daily_dose * 365 
+    return (daily_dose * 7) / weekly_change_pct
+
+def get_optimal_k_range(gh):
+    return {
+        'min': gh * 1.2,
+        'opt_low': gh * 1.5,
+        'opt_high': gh * 2.5,
+        'max': gh * 3.0,
+        'target': gh * 1.8
+    }
+
+def get_liebig_metrics(co2, no3, po4, k, fe, targets):
+    """Нормалізація показників для графіка (відносно цілей)"""
+    return {
+        "C (CO2)": min(co2 / 30.0, 1.5), # 30 мг/л як база
+        "N (NO3)": min(no3 / targets['no3'], 1.5) if targets['no3'] > 0 else 0,
+        "P (PO4)": min(po4 / targets['po4'], 1.5) if targets['po4'] > 0 else 0,
+        "K": min(k / targets['k'], 1.5) if targets['k'] > 0 else 0,
+        "Fe": min(fe / targets['fe'], 1.5) if targets['fe'] > 0 else 0
+    }
+
 def calculate_cnpk_status(carbon_estimate, no3, po4, k):
     """
     Оцінка співвідношення C:N:P:K
