@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(page_title="Wong Pro Dashboard", layout="wide")
 
 st.title("🌿 Баланс Акваріума + Самоміси")
-st.info("Методологія Dennis Wong")
+st.info("Методологія Toxicode")
 
 # --- 1. БЛОК ТЕСТІВ ВОДИ ---
 st.header("📋 1. Поточні тести води")
