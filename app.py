@@ -197,7 +197,6 @@ for d in range(days + 1):
 
 df_forecast = pd.DataFrame(forecast).set_index("День")
 st.line_chart(df_forecast)
-
 # ======================== 7. K/GH РОЗШИРЕНИЙ АНАЛІЗ ========================
 st.header("🧂 4. K/GH співвідношення — контроль антагонізму")
 
@@ -329,9 +328,10 @@ with tab_chemistry:
     - Статус: {"⚠️ Ризик антагонізму" if k_gh_ratio > 2.5 else "✅ Безпечно" if k_gh_ratio < 2.5 else "🔴 Критично"}
     
     **Формули запам'ятовування:**
+    
 
-# ======================== 8.АНАЛІЗ ========================
-st.header("📝 5. Гідрохімічний висновок")
+# ======================== 8. ЕКСПЕРТНИЙ АНАЛІЗ ========================
+st.header("📝 5. Гідрохімічний експертний висновок")
 
 co2_val = calculate_co2(kh, ph)
 redfield_status, redfield_ratio = redfield_balance(final_no3, final_po4, custom_redfield)
