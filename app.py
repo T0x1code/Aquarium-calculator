@@ -1,230 +1,120 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import json
-import os
-from datetime import datetime
 
-st.set_page_config(page_title="Toxicode Predictive System", layout="wide")
-st.title("🧠 Toxicode Predictive Aquarium Model")
+# 1. Налаштування сторінки
+st.set_page_config(page_title="Toxicode Aquarium System", layout="wide")
 
-DATA_FILE = "aquarium_data_v2.json"
+st.title("🌿 Toxicode Aquarium System")
+st.info("Універсальний калькулятор балансу (за методологією Dennis Wong)")
 
-# ---------------- LOAD / SAVE ----------------
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {"events": [], "params": default_params()}
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
-
-# ---------------- DEFAULT PARAMS ----------------
-def default_params():
-    return {
-        "Vmax_no3": 2.0,
-        "K_no3": 5.0,
-        "Vmax_po4": 0.2,
-        "K_po4": 0.1,
-        "biomass": 1.0,
-        "light": 1.0,
-        "co2": 1.0,
-        "fish_no3": 0.3
-    }
-
-data = load_data()
-
-# ---------------- SESSION ----------------
-if "events" not in st.session_state:
-    st.session_state.events = data["events"]
-
-if "params" not in st.session_state:
-    st.session_state.params = data["params"]
-
-# ---------------- SYSTEM ----------------
-st.header("⚙️ Параметри системи")
-
-params = st.session_state.params
-
-params["biomass"] = st.slider("Біомаса (0.5–3)", 0.5, 3.0, float(params["biomass"]))
-params["light"] = st.slider("Світло (0.5–2)", 0.5, 2.0, float(params["light"]))
-params["co2"] = st.slider("CO2 (0.5–2)", 0.5, 2.0, float(params["co2"]))
-params["fish_no3"] = st.number_input("NO3 від риби (мг/л/день)", value=float(params["fish_no3"]))
+# --- 1. ЗАГАЛЬНІ ПАРАМЕТРИ АКВАРІУМА ---
+st.header("📏 Загальні параметри")
+tank_vol = st.number_input("Загальний об'єм води в акваріумі (нетто), л", value=50, step=1)
 
 st.divider()
 
-# ---------------- EVENTS ----------------
-st.header("➕ Подія")
+# --- 2. ПОТОЧНІ ТЕСТИ ТА ПІДМІНА ---
+col_setup1, col_setup2 = st.columns([1, 2])
 
-event_type = st.selectbox("Тип", ["measurement","dosing","water_change"])
-timestamp = datetime.now().isoformat()
+with col_setup1:
+    st.subheader("📋 Поточні тести")
+    base_no3 = st.number_input("Тест NO3, мг/л", value=20.0, step=0.5)
+    base_po4 = st.number_input("Тест PO4, мг/л", value=1.0, step=0.05)
+    base_k = st.number_input("Тест K, мг/л", value=10.0, step=0.5)
+    gh = st.number_input("GH (Жорсткість)", value=8, step=1)
+    kh = st.number_input("KH (Лужність)", value=3, step=1)
+    ph = st.number_input("pH (Кислотність)", value=6.5, step=0.1)
 
-if event_type == "measurement":
-    no3 = st.number_input("NO3", value=10.0)
-    po4 = st.number_input("PO4", value=0.5)
-    k = st.number_input("K", value=10.0)
-
-    if st.button("Додати вимір"):
-        st.session_state.events.append({
-            "type":"measurement",
-            "time":timestamp,
-            "no3":no3,
-            "po4":po4,
-            "k":k
-        })
-        save_data(st.session_state)
-
-elif event_type == "dosing":
-    no3 = st.number_input("NO3 додано", value=0.0)
-    po4 = st.number_input("PO4 додано", value=0.0)
-    k = st.number_input("K додано", value=0.0)
-
-    if st.button("Додати дозування"):
-        st.session_state.events.append({
-            "type":"dosing",
-            "time":timestamp,
-            "no3":no3,
-            "po4":po4,
-            "k":k
-        })
-        save_data(st.session_state)
-
-elif event_type == "water_change":
-    pct = st.number_input("% підміни", value=30.0)
-
-    if st.button("Додати підміну"):
-        st.session_state.events.append({
-            "type":"water_change",
-            "time":timestamp,
-            "pct":pct/100
-        })
-        save_data(st.session_state)
+with col_setup2:
+    st.subheader("💧 Підміна води")
+    change_liters = st.number_input("Скільки літрів води замінюється?", value=15.0, step=1.0)
+    
+    c_w1, c_w2 = st.columns(2)
+    with c_w1:
+        water_no3 = st.number_input("NO3 у новій воді, мг/л", value=0.0)
+    with c_w2:
+        water_po4 = st.number_input("PO4 у новій воді, мг/л", value=0.0)
+    
+    # Розрахунок відсотка та залишку
+    change_pct = (change_liters / tank_vol) if tank_vol > 0 else 0
+    after_w_no3 = (base_no3 * (1 - change_pct)) + (water_no3 * change_pct)
+    after_w_po4 = (base_po4 * (1 - change_pct)) + (water_po4 * change_pct)
+    
+    st.write(f"📊 **Аналіз підміни:** Ви замінюєте **{change_pct*100:.1f}%** води.")
+    st.write(f"📉 **Концентрація після підміни:** NO3: {after_w_no3:.1f} | PO4: {after_w_po4:.2f}")
 
 st.divider()
 
-# ---------------- MODEL CORE ----------------
-def step(state, dt_days, params):
-    no3 = state["no3"]
-    po4 = state["po4"]
+# --- 3. ДОЗУВАННЯ ДОБРИВ ---
+st.header("🧪 Дозування добрив")
+st.caption("Вкажіть концентрацію вашого розчину (г/л) та дозу (мл)")
 
-    uptake_no3 = params["Vmax_no3"] * (no3 / (params["K_no3"] + no3))
-    uptake_no3 *= params["light"] * params["co2"] * params["biomass"]
+c1, c2, c3, c4 = st.columns(4)
 
-    uptake_po4 = params["Vmax_po4"] * (po4 / (params["K_po4"] + po4))
-    uptake_po4 *= params["light"] * params["co2"] * params["biomass"]
+with c1:
+    st.markdown("### Азот (N)")
+    conc_n = st.number_input("Концентрація NO3, г/л", value=50.0, key="c_n")
+    dose_n = st.number_input("Доза N, мл", value=0.0, step=0.5, key="d_n")
+    added_no3 = (dose_n * conc_n) / tank_vol
 
-    no3 = no3 + params["fish_no3"]*dt_days - uptake_no3*dt_days
-    po4 = po4 - uptake_po4*dt_days
+with c2:
+    st.markdown("### Фосфор (P)")
+    conc_p = st.number_input("Концентрація PO4, г/л", value=5.0, key="c_p")
+    dose_p = st.number_input("Доза P, мл", value=0.0, step=0.5, key="d_p")
+    added_po4 = (dose_p * conc_p) / tank_vol
 
-    return {
-        "no3": max(no3,0),
-        "po4": max(po4,0),
-        "k": state["k"]
-    }
+with c3:
+    st.markdown("### Калій (K)")
+    conc_k = st.number_input("Концентрація K, г/л", value=20.0, key="c_k")
+    dose_k = st.number_input("Доза K, мл", value=0.0, step=0.5, key="d_k")
+    added_k = (dose_k * conc_k) / tank_vol
 
-# ---------------- SIMULATION ----------------
-st.header("🔬 Модель")
+with c4:
+    st.markdown("### Залізо (Fe)")
+    conc_fe = st.number_input("Концентрація Fe, г/л", value=1.0, key="c_fe")
+    dose_fe = st.number_input("Доза Fe, мл", value=0.0, step=0.5, key="d_fe")
+    added_fe = (dose_fe * conc_fe) / tank_vol
 
-if st.session_state.events:
+# --- 4. ПІДСУМКИ ---
+total_no3 = after_w_no3 + added_no3
+total_po4 = after_w_po4 + added_po4
+total_k = base_k + added_k
+co2 = 3 * kh * (10**(7 - ph))
+redfield = total_no3 / total_po4 if total_po4 > 0 else 0
+k_target = gh * 1.5
 
-    events = sorted(st.session_state.events, key=lambda x: x["time"])
+st.divider()
 
-    state = {"no3":None,"po4":None,"k":None}
-    history = []
+# --- 5. ВІЗУАЛІЗАЦІЯ РЕЗУЛЬТАТІВ ---
+st.header("📊 Прогноз стану системи")
 
-    last_time = None
+res1, res2, res3, res4 = st.columns(4)
+res1.metric("Фінальний NO3", f"{total_no3:.1f}", f"{total_no3 - base_no3:.1f} від старту")
+res2.metric("Фінальний PO4", f"{total_po4:.2f}", f"{total_po4 - base_po4:.2f} від старту")
+res3.metric("K:GH Offset", f"{total_k - gh:.1f}", f"+{added_k:.1f} K")
+res4.metric("CO2 мг/л", f"{co2:.1f}")
 
-    for e in events:
-        t = datetime.fromisoformat(e["time"])
+st.subheader("Аналіз Toxicode")
 
-        if last_time and state["no3"] is not None:
-            dt = (t - last_time).total_seconds()/86400
-            state = step(state, dt, params)
-
-        if e["type"] == "measurement":
-            state["no3"] = e["no3"]
-            state["po4"] = e["po4"]
-            state["k"] = e["k"]
-
-        elif e["type"] == "dosing":
-            state["no3"] += e["no3"]
-            state["po4"] += e["po4"]
-            state["k"] += e["k"]
-
-        elif e["type"] == "water_change":
-            state["no3"] *= (1 - e["pct"])
-            state["po4"] *= (1 - e["pct"])
-            state["k"] *= (1 - e["pct"])
-
-        history.append({
-            "time":t,
-            "no3":state["no3"],
-            "po4":state["po4"]
-        })
-
-        last_time = t
-
-    df = pd.DataFrame(history).dropna()
-
-    st.line_chart(df.set_index("time"))
-
+# Аналіз CO2
+if co2 > 40:
+    st.error(f"🔴 **CO2:** Занадто високий ({co2:.1f} ppm). Ризик для фауни.")
+elif 15 <= co2 <= 35:
+    st.success(f"🟢 **CO2:** В ідеальній зоні ({co2:.1f} ppm).")
 else:
-    st.warning("Немає даних")
+    st.warning(f"🟡 **CO2:** Низький або нестабільний рівень ({co2:.1f} ppm).")
 
-st.divider()
+# Аналіз Редфілда
+if 15 <= redfield <= 22:
+    st.success(f"✅ **Редфілд:** {redfield:.1f} — Баланс NO3/PO4 дотримано.")
+else:
+    st.info(f"📊 **Редфілд:** {redfield:.1f}. Оптимально: 16-20.")
 
-# ---------------- FORECAST ----------------
-st.header("📈 Прогноз")
+# Аналіз Калію
+is_blocked = gh > 8 and total_k < k_target
+if is_blocked:
+    st.error(f"🚫 **K/GH:** Ризик блокування азоту. Підніміть K до {k_target:.1f} мг/л.")
+else:
+    st.success("💎 **K/GH:** Транспорт нутрієнтів у нормі.")
 
-days = st.slider("Днів",1,14,7)
-
-if not df.empty:
-
-    state = {
-        "no3":df.iloc[-1]["no3"],
-        "po4":df.iloc[-1]["po4"],
-        "k":0
-    }
-
-    forecast = []
-
-    for d in range(days):
-        state = step(state, 1, params)
-        forecast.append({
-            "day":d,
-            "no3":state["no3"],
-            "po4":state["po4"]
-        })
-
-    forecast_df = pd.DataFrame(forecast)
-
-    st.line_chart(forecast_df.set_index("day"))
-
-st.divider()
-
-# ---------------- RECOMMEND ----------------
-st.header("🤖 Рекомендації")
-
-target_no3 = st.number_input("Ціль NO3", value=15.0)
-
-if not df.empty:
-
-    current = df.iloc[-1]["no3"]
-
-    future = forecast_df.iloc[-1]["no3"]
-
-    if future < target_no3:
-        need = target_no3 - future
-        st.warning(f"Рекомендовано додати NO3: {need:.1f} мг/л")
-    else:
-        st.success("Все стабільно")
-
-st.divider()
-
-# ---------------- SAVE PARAMS ----------------
-save_data({
-    "events": st.session_state.events,
-    "params": st.session_state.params
-})
+if added_fe > 0:
+    st.info(f"🧬 Додано заліза: {added_fe:.2f} мг/л.")
