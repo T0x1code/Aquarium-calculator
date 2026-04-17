@@ -7,38 +7,10 @@ st.title("🌿 Toxicode Aquarium System V9.5 — C:N:P:K + Повний конт
 # ======================== HELPER FUNCTIONS ========================
 def clamp(v, min_v, max_v):
     return max(min(v, max_v), min_v)
-    def calculate_steady_state(daily_dose, weekly_change_pct):
-    """Розрахунок накопичення: де зупиниться концентрація через місяці"""
-    if weekly_change_pct <= 0: return daily_dose * 365 
-    return (daily_dose * 7) / weekly_change_pct
-
-def get_liebig_metrics(co2, no3, po4, k, fe, targets):
-    """Нормалізація для графіка Лібіха (0.0 - 1.5)"""
-    return {
-        "C (CO2)": min(co2 / 30.0, 1.5),
-        "N (NO3)": min(no3 / targets['no3'], 1.5) if targets['no3'] > 0 else 0,
-        "P (PO4)": min(po4 / targets['po4'], 1.5) if targets['po4'] > 0 else 0,
-        "K": min(k / targets['k'], 1.5) if targets['k'] > 0 else 0,
-        "Fe": min(fe / targets['fe'], 1.5) if targets['fe'] > 0 else 0
-    }
 
 def calculate_co2(kh, ph):
     """CO₂ (мг/л) = 3 * KH * 10^(7-pH)"""
     return 3 * kh * (10 ** (7 - ph))
-    def calculate_steady_state(daily_dose, weekly_change_pct):
-    """Розрахунок накопичення: де зупиниться концентрація через місяці"""
-    if weekly_change_pct <= 0: return daily_dose * 365 
-    return (daily_dose * 7) / weekly_change_pct
-
-def get_liebig_metrics(co2, no3, po4, k, fe, targets):
-    """Нормалізація для графіка Лібіха (0.0 - 1.5)"""
-    return {
-        "C (CO2)": min(co2 / 30.0, 1.5),
-        "N (NO3)": min(no3 / targets['no3'], 1.5) if targets['no3'] > 0 else 0,
-        "P (PO4)": min(po4 / targets['po4'], 1.5) if targets['po4'] > 0 else 0,
-        "K": min(k / targets['k'], 1.5) if targets['k'] > 0 else 0,
-        "Fe": min(fe / targets['fe'], 1.5) if targets['fe'] > 0 else 0
-    }
 
 def redfield_balance(no3, po4, target_ratio):
     """Оцінка балансу N:P"""
