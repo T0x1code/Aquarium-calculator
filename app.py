@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(page_title="Toxicode Aquarium System", layout="wide")
 
 st.title("🌿 Toxicode Aquarium System")
-st.info("Універсальний калькулятор балансу (за методологією Dennis Wong)")
+st.info("Універсальний калькулятор балансу")
 
 # --- 1. ЗАГАЛЬНІ ПАРАМЕТРИ АКВАРІУМА ---
 st.header("📏 Загальні параметри")
