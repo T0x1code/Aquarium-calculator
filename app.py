@@ -111,8 +111,8 @@ st.line_chart(df)
 
 st.divider()
 
-# ---------------- 6. АНАЛІЗ ТА ПЛАН ДІЙ ----------------
-st.header("📊 Аналіз та Рекомендації Toxicode")
+# ---------------- 6. АНАЛІЗ ТА ДИФЕРЕНЦІАЛ TOXICODE ----------------
+st.header("📊 Порівняння з цільовими показниками")
 res1, res2, res3, res4 = st.columns(4)
 
 co2 = 3 * kh * (10**(7 - ph))
@@ -121,43 +121,50 @@ k_target = gh * 1.5
 
 with res1:
     st.metric("CO2 (мг/л)", f"{co2:.1f}")
-    if 15 <= co2 <= 35: st.success("CO2 OK")
-    else: st.warning("Перевірте CO2")
+    if 15 <= co2 <= 35: st.success("CO2: Оптимально")
+    else: st.warning("CO2: Потребує уваги")
 
 with res2:
-    st.metric("Редфілд", f"{ratio:.1f}")
-    if 10 <= ratio <= 22: st.success("Баланс OK")
-    else: st.error("Дисбаланс N/P")
+    st.metric("Редфілд (N/P)", f"{ratio:.1f}")
+    if 10 <= ratio <= 22: st.success("N/P: Баланс")
+    else: st.info("N/P: Специфічне")
 
 with res3:
-    st.metric("K/GH Баланс", f"{final_k:.1f}")
-    if final_k >= k_target: st.success("Транспорт OK")
-    else: st.error(f"Мало K (ціль {k_target})")
+    st.metric("Калій (K)", f"{final_k:.1f}")
+    if final_k >= k_target: st.success("K/GH: Норма")
+    else: st.error("K/GH: Антагонізм")
 
 with res4:
-    st.metric("Прогноз TDS", f"{after_tds:.0f}")
-    if abs(after_tds - target_tds) < 10: st.success("TDS в нормі")
-    else: st.info("TDS відхилено")
+    st.metric("TDS", f"{after_tds:.0f}", delta=f"{after_tds - target_tds:.0f} від цілі")
 
 st.divider()
 
-# РОЗУМНИЙ ПЛАН
+# ---------------- 7. РОЗРАХУНОК РІЗНИЦІ (DIFF) ----------------
+st.subheader("📍 Прогнозована різниця на кінець періоду")
+st.caption(f"Розрахунок залишку через {days} дн. відносно ваших цілей у Sidebar")
+
 future_no3 = df.iloc[-1]["NO3"]
 future_po4 = df.iloc[-1]["PO4"]
 
-col_plan1, col_plan2 = st.columns(2)
+col_p1, col_p2 = st.columns(2)
 
-with col_plan1:
-    st.subheader("📍 Стан на кінець прогнозу")
-    if future_no3 < target_no3:
-        need_n = (target_no3 - future_no3) * tank_vol / conc_n
-        st.warning(f"Додати **{need_n:.1f} мл** NO3 для цілі {target_no3} мг/л")
+with col_p1:
+    diff_n = target_no3 - future_no3
+    if diff_n > 0:
+        ml_n = (diff_n * tank_vol) / conc_n if conc_n > 0 else 0
+        st.write(f"📉 **Дефіцит NO3:** {diff_n:.1f} мг/л")
+        st.info(f"Для досягнення вашої цілі ({target_no3}) математично бракує ~{ml_n:.1f} мл добрива.")
     else:
-        st.success("Нітратів достатньо")
+        st.write(f"📈 **Надлишок NO3:** {abs(diff_n):.1f} мг/л вище вашої цілі.")
 
-with col_plan2:
-    if future_po4 < target_po4:
-        need_p = (target_po4 - future_po4) * tank_vol / conc_p
-        st.warning(f"Додати **{need_p:.1f} мл** PO4 для цілі {target_po4} мг/л")
+with col_p2:
+    diff_p = target_po4 - future_po4
+    if diff_p > 0:
+        ml_p = (diff_p * tank_vol) / conc_p if conc_p > 0 else 0
+        st.write(f"📉 **Дефіцит PO4:** {diff_p:.2f} мг/л")
+        st.info(f"Для досягнення вашої цілі ({target_po4}) математично бракує ~{ml_p:.1f} мл добрива.")
     else:
-        st.success("Фосфатів достатньо")
+        st.write(f"📈 **Надлишок PO4:** {abs(diff_p):.2f} мг/л вище вашої цілі.")
+
+st.markdown("---")
+st.warning("⚠️ **Відмова від відповідальності:** Дані розрахунки базуються виключно на математичній моделі змішування та введених вами темпах споживання. Кожен акваріум — це жива система. Коригуйте дозування поступово, спостерігаючи за станом рослин та фауни.")
