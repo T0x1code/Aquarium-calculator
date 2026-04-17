@@ -1,50 +1,73 @@
 import streamlit as st
 
-# 1. Налаштування
-st.set_page_config(page_title="Wong Aquarium Dashboard")
+st.set_page_config(page_title="Wong Dashboard + Dosing", layout="wide")
 
-st.title("🌿 Баланс Акваріума")
-st.write("Методологія Денніса Вонга (Dennis Wong)")
+st.title("🌿 Pro Aquarium Dashboard & Dosing")
 
-# 2. Повзунки параметрів
-no3 = st.sidebar.slider("NO3 (Нітрати)", 0.0, 50.0, 20.0, 0.5)
-po4 = st.sidebar.slider("PO4 (Фосфати)", 0.0, 5.0, 1.0, 0.05)
-k = st.sidebar.slider("K (Калій)", 0.0, 30.0, 9.0, 0.5)
-gh = st.sidebar.slider("GH (Жорсткість)", 0, 20, 10, 1)
-kh = st.sidebar.slider("KH (Лужність)", 0, 20, 4, 1)
-ph = st.sidebar.slider("pH (Кислотність)", 5.5, 8.5, 6.0, 0.1)
+# --- SIDEBAR: ПАРАМЕТРИ ТА ТЕСТИ ---
+st.sidebar.header("1. Поточні тести води")
+tank_volume = st.sidebar.number_input("Об'єм акваріума (нетто), л", value=50)
 
-# 3. Основні розрахунки
+st.sidebar.markdown("---")
+base_no3 = st.sidebar.slider("Тест NO3 (мг/л)", 0.0, 50.0, 10.0, 0.5)
+base_po4 = st.sidebar.slider("Тест PO4 (мг/л)", 0.0, 5.0, 0.5, 0.05)
+k = st.sidebar.slider("Тест K (мг/л)", 0.0, 30.0, 10.0, 0.5)
+gh = st.sidebar.slider("GH (загальна)", 0, 20, 8, 1)
+kh = st.sidebar.slider("KH (карбонатна)", 0, 20, 3, 1)
+ph = st.sidebar.slider("pH (кислотність)", 5.5, 8.5, 6.5, 0.1)
+
+# --- ОСНОВНА ПАНЕЛЬ: КАЛЬКУЛЯТОР ДОБРИВ ---
+st.header("🧪 Калькулятор самомісів")
+with st.expander("Налаштувати внесення добрив"):
+    col_dose1, col_dose2 = st.columns(2)
+    
+    with col_dose1:
+        st.subheader("Макро (Азот/Фосфор)")
+        dose_ml = st.number_input("Скільки мл вносиш?", value=0.0, step=0.5)
+        sol_no3_mg_ml = st.number_input("Концентрація NO3 у добриві (мг/мл)", value=10.0)
+        sol_po4_mg_ml = st.number_input("Концентрація PO4 у добриві (мг/мл)", value=1.0)
+    
+    with col_dose2:
+        st.info("💡 Порада: Якщо твій рецепт каже, що 100г солі на 1л дає 50 мг/мл NO3, впиши це сюди.")
+
+# Розрахунок підняття концентрації
+added_no3 = (dose_ml * sol_no3_mg_ml) / tank_volume
+added_po4 = (dose_ml * sol_po4_mg_ml) / tank_volume
+
+# Підсумкові значення для дашборду
+total_no3 = base_no3 + added_no3
+total_po4 = base_po4 + added_po4
+
+# --- ЛОГІКА ДАШБОРДУ (Вонг) ---
 co2 = 3 * kh * (10**(7 - ph))
-redfield = no3 / po4 if po4 > 0 else 0
+redfield = total_no3 / total_po4 if total_po4 > 0 else 0
 k_target = gh * 1.5
 
-# 4. Вивід результатів
-st.header("📊 Поточні показники")
-col1, col2, col3 = st.columns(3)
-col1.metric("CO2 mg/l", round(co2, 1))
-col2.metric("Пропорція NO3:PO4", round(redfield, 1))
-col3.metric("K:GH Offset", round(k - gh, 1))
-
+# --- ВІЗУАЛІЗАЦІЯ ---
 st.divider()
+st.subheader("📊 Результат після внесення добрив")
 
-# 5. Аналіз Панелей
-st.subheader("ПАНЕЛЬ А: Статус CO2")
-if co2 > 45:
-    st.error(f"Критичний надлишок! ({round(co2,1)} ppm). Ризик для риб.")
-elif 20 <= co2 <= 35:
-    st.success(f"Оптимально ({round(co2,1)} ppm).")
-else:
-    st.warning(f"Низький або нестабільний рівень ({round(co2,1)} ppm).")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Підсумковий NO3", f"{total_no3:.1f}", f"+{added_no3:.1f}")
+m2.metric("Підсумковий PO4", f"{total_po4:.2f}", f"+{added_po4:.2f}")
+m3.metric("CO2 mg/l", f"{co2:.1f}")
+m4.metric("Redfield Ratio", f"{redfield:.1f}")
 
-st.subheader("ПАНЕЛЬ Б: Пропорція Редфілда")
-if 15 <= redfield <= 22:
-    st.success(f"Золота зона ({round(redfield,1)}). Баланс оптимальний.")
-else:
-    st.info(f"Поточне співвідношення: {round(redfield,1)}. Ідеал: 16-20.")
+# Панелі статусу
+st.markdown("---")
+c1, c2 = st.columns(2)
 
-st.subheader("ПАНЕЛЬ В: Антагонізм (GH/K)")
-if gh > 8 and k < k_target:
-    st.error(f"БЛОКУВАННЯ! При GH {gh} Калій має бути не менше {round(k_target,1)} мг/л.")
-else:
-    st.success("Транспорт нутрієнтів у нормі.")
+with c1:
+    if 15 <= redfield <= 22:
+        st.success(f"💎 Редфілд: {redfield:.1f} (Ідеально)")
+    else:
+        st.warning(f"⚠️ Редфілд: {redfield:.1f} (Дисбаланс)")
+
+with c2:
+    if gh > 8 and k < k_target:
+        st.error(f"🚫 K:GH: Блокування! Треба K > {k_target:.1f}")
+    else:
+        st.success("✅ K:GH: Транспорт у нормі")
+
+if co2 > 35:
+    st.error(f"💀 CO2 занадто високий: {co2:.1f} ppm!")
