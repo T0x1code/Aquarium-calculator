@@ -1,10 +1,10 @@
 import streamlit as st
 
-# 1. Основні налаштування (без кастомних стилів, що ламають додаток)
+# 1. Налаштування сторінки
 st.set_page_config(page_title="Wong Pro Dashboard", layout="wide")
 
-st.title("🌿 Калькулятор Балансу Акваріума")
-st.info("За методологією Dennis Wong")
+st.title("🌿 Баланс Акваріума + Самоміси")
+st.info("Методологія Dennis Wong")
 
 # --- 1. БЛОК ТЕСТІВ ВОДИ ---
 st.header("📋 1. Поточні тести води")
@@ -15,9 +15,9 @@ with col_t1:
     base_po4 = st.slider("Тест PO4 (мг/л)", 0.0, 5.0, 0.5, 0.05)
 with col_t2:
     base_k = st.slider("Тест K (мг/л)", 0.0, 30.0, 10.0, 0.5)
-    gh = st.slider("GH (Жорсткість)", 0, 25, 8, 1)
+    gh = st.slider("GH (Загальна жорсткість)", 0, 25, 8, 1)
 with col_t3:
-    kh = st.slider("KH (Лужність)", 0, 20, 3, 1)
+    kh = st.slider("KH (Карбонатна жорсткість)", 0, 20, 3, 1)
     ph = st.slider("pH (Кислотність)", 5.5, 8.5, 6.5, 0.1)
 
 st.divider()
@@ -30,6 +30,7 @@ c1, c2, c3, c4 = st.columns(4)
 
 with c1:
     st.markdown("**Азот (NO3)**")
+    # Твій рецепт Нітрату: Са(NO3)2 та Mg(NO3)2
     conc_n = st.number_input("Концентрація, г/л", value=50.0, key="c_n")
     dose_n = st.number_input("Доза, мл", value=0.0, step=0.1, key="d_n")
     added_no3 = (dose_n * conc_n) / tank_vol
@@ -48,6 +49,7 @@ with c3:
 
 with c4:
     st.markdown("**Залізо (Fe)**")
+    # Твій рецепт Мікро v2.2 (Fe EDTA)
     conc_fe = st.number_input("Концентрація, г/л", value=1.0, key="c_fe")
     dose_fe = st.number_input("Доза, мл", value=0.0, step=0.1, key="d_fe")
     added_fe = (dose_fe * conc_fe) / tank_vol
@@ -71,67 +73,12 @@ m2.metric("Підсумковий PO4", f"{total_po4:.2f}", f"+{added_po4:.2f}")
 m3.metric("K:GH Offset", f"{total_k - gh:.1f}", f"+{added_k:.1f} K")
 m4.metric("CO2 мг/л", f"{co2:.1f}")
 
-# --- АНАЛІЗ ПАНЕЛЕЙ ---
 st.subheader("Аналіз системи")
 
-# CO2
+# CO2 Аналіз
 if co2 > 45:
-    st.error(f"🔴 ПАНЕЛЬ А (CO2): Критичний надлишок ({co2:.1f} ppm). Небезпечно!")
+    st.error(f"🔴 ПАНЕЛЬ А (CO2): Критичний надлишок ({co2:.1f} ppm).")
 elif 20 <= co2 <= 35:
     st.success(f"🟢 ПАНЕЛЬ А (CO2): Оптимально ({co2:.1f} ppm).")
 else:
-    st.warning(f"🟡 ПАНЕЛЬ А (CO2): Низький рівень ({co2:.1f} ppm).")
-
-# Редфілд
-if 15 <= redfield <= 22:
-    st.success(f"✅ ПАНЕЛЬ Б (Редфілд): Співвідношення {redfield:.1f} — Ідеально.")
-else:
-    st.info(f"📊 ПАНЕЛЬ Б (Редфілд): Співвідношення {redfield:.1f}. Ціль: 16-20.")
-
-# K:GH
-is_blocked = gh > 8 and total_k < k_target
-if is_blocked:
-    st.error(f"🚫 ПАНЕЛЬ В (Транспорт): Блокування! При GH {gh} Калій має бути >{k_target:.1f}. Зараз: {total_k:.1f}")
-else:
-    st.success(f"💎 ПАНЕЛЬ В (Транспорт): Співвідношення K/GH у нормі.")
-
-if added_fe > 0:
-    st.info(f"🧬 Додано заліза: {added_fe:.2f} мг/л.")    st.warning(f"🟡 **ПАНЕЛЬ А (CO2):** Низький рівень ({co2:.1f} ppm).")
-
-# Панель Редфілда
-if 15 <= redfield <= 22:
-    st.success(f"✅ **ПАНЕЛЬ Б (Редфілд):** Співвідношення {redfield:.1f} — Ідеальний баланс.")
-else:
-    st.info(f"📊 **ПАНЕЛЬ Б (Редфілд):** Поточне співвідношення {redfield:.1f}. Ціль: 16-20.")
-
-# Панель K:GH
-is_blocked = gh > 8 and total_k < k_target
-if is_blocked:
-    st.error(f"🚫 **ПАНЕЛЬ В (Транспорт):** Калій {total_k:.1f} замалий для GH {gh}. Нітрати блокуються! Ціль: >{k_target:.1f}")
-else:
-    st.success(f"💎 **ПАНЕЛЬ В (Транспорт):** Співвідношення K/GH у нормі.")
-
-if added_fe > 0:
-    st.info(f"🧬 Додано заліза: {added_fe:.2f} мг/л.")# ПАНЕЛЬ А
-st.markdown(f"""<div class="panel-card {'status-err' if co2 > 40 else 'status-ok' if 20<=co2<=35 else 'status-warn'}">
-    <b>ПАНЕЛЬ А: СТАТУС CO2 (pH/KH)</b><br>
-    {f"🔴 Критичний надлишок CO2 ({co2:.1f} ppm). Ризик для риб." if co2 > 45 else f"🟢 Оптимально ({co2:.1f} ppm)." if 20<=co2<=35 else f"🟡 Низький рівень ({co2:.1f} ppm)."}
-    </div>""", unsafe_allow_input_html=True)
-
-# ПАНЕЛЬ Б
-st.markdown(f"""<div class="panel-card {'status-ok' if 15<=redfield<=22 else 'status-warn'}">
-    <b>ПАНЕЛЬ Б: ПРОПОРЦІЯ РЕДФІЛДА (NO3/PO4)</b><br>
-    Після дозування: {total_no3:.1f} / {total_po4:.2f}. Співвідношення: <b>{redfield:.1f}</b>
-    </div>""", unsafe_allow_input_html=True)
-
-# ПАНЕЛЬ В
-is_blocked = gh > 8 and total_k < k_target
-st.markdown(f"""<div class="panel-card {'status-err' if is_blocked else 'status-ok'}">
-    <b>ПАНЕЛЬ В: ТРАНСПОРТ ТА АНТАГОНІЗМ (GH/K)</b><br>
-    Поточний K: {total_k:.1f} | Поріг для GH {gh}: {k_target:.1f}. 
-    {f"🚫 БЛОКУВАННЯ! Додайте ще Калію." if is_blocked else "💎 Транспорт у нормі."}
-    </div>""", unsafe_allow_input_html=True)
-
-# Додаткова метрика для заліза
-if added_fe > 0:
-    st.info(f"🧬 Додано заліза (Fe): **{added_fe:.2f} мг/л**. Сумарна концентрація залежить від накопичення.")
+    st.warning(f"🟡 ПАНЕЛЬ А (CO2): Низький рів
