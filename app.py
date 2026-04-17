@@ -430,32 +430,60 @@ with tab_chemistry:
     **Формули запам'ятовування:**
     """)
 
-# ======================== 9. ПЛАН КОРЕКЦІЇ (ПЕРЕРОБЛЕНИЙ) ========================
+# ======================== 9. ПЛАН КОРЕКЦІЇ (ВИПРАВЛЕНО) ========================
 st.divider()
 st.header("📅 6. План корекції дозування")
 
 f_end = forecast[-1]
 
-# Розраховуємо необхідну зміну КОНЦЕНТРАЦІЇ в мг/л
+# Розраховуємо необхідну зміну КОНЦЕНТРАЦІЇ в мг/л після days днів
 delta_no3 = target_no3 - f_end["NO3"]
 delta_po4 = target_po4 - f_end["PO4"]
 delta_k = target_k - f_end["K"]
 
-# Переводимо в зміну дози (мл/день)
-# Формула: зміна_мл = (зміна_мг_л × об'єм) / концентрація_добрива
-change_n_ml = (delta_no3 * tank_vol) / conc_n if conc_n > 0 and delta_no3 > 0 else 0
-change_p_ml = (delta_po4 * tank_vol) / conc_p if conc_p > 0 and delta_po4 > 0 else 0
-change_k_ml = (delta_k * tank_vol) / conc_k if conc_k > 0 and delta_k > 0 else 0
+# ВАЖЛИВО: розподіляємо зміну на days днів (це ДОБОВА зміна дози)
+if delta_no3 > 0:
+    # Скільки мг/л потрібно додавати КОЖНОГО ДНЯ
+    daily_delta_no3 = delta_no3 / days
+    change_n_ml = (daily_delta_no3 * tank_vol) / conc_n if conc_n > 0 else 0
+    new_dose_n = current_dose_n_ml + change_n_ml
+    correction_text_n = f"+{change_n_ml:.1f} мл/день"
+elif delta_no3 < 0:
+    daily_delta_no3 = abs(delta_no3) / days
+    reduce_n_ml = (daily_delta_no3 * tank_vol) / conc_n if conc_n > 0 else 0
+    new_dose_n = max(0, current_dose_n_ml - reduce_n_ml)
+    correction_text_n = f"-{reduce_n_ml:.1f} мл/день"
+else:
+    new_dose_n = current_dose_n_ml
+    correction_text_n = "без змін"
 
-# Для від'ємних змін (зменшення дози) — окрема логіка
-reduce_n_ml = (abs(delta_no3) * tank_vol) / conc_n if conc_n > 0 and delta_no3 < 0 else 0
-reduce_p_ml = (abs(delta_po4) * tank_vol) / conc_p if conc_p > 0 and delta_po4 < 0 else 0
-reduce_k_ml = (abs(delta_k) * tank_vol) / conc_k if conc_k > 0 and delta_k < 0 else 0
+if delta_po4 > 0:
+    daily_delta_po4 = delta_po4 / days
+    change_p_ml = (daily_delta_po4 * tank_vol) / conc_p if conc_p > 0 else 0
+    new_dose_p = current_dose_p_ml + change_p_ml
+    correction_text_p = f"+{change_p_ml:.2f} мл/день"
+elif delta_po4 < 0:
+    daily_delta_po4 = abs(delta_po4) / days
+    reduce_p_ml = (daily_delta_po4 * tank_vol) / conc_p if conc_p > 0 else 0
+    new_dose_p = max(0, current_dose_p_ml - reduce_p_ml)
+    correction_text_p = f"-{reduce_p_ml:.2f} мл/день"
+else:
+    new_dose_p = current_dose_p_ml
+    correction_text_p = "без змін"
 
-# Нова рекомендована доза
-new_dose_n = current_dose_n_ml + change_n_ml - reduce_n_ml
-new_dose_p = current_dose_p_ml + change_p_ml - reduce_p_ml
-new_dose_k = current_dose_k_ml + change_k_ml - reduce_k_ml
+if delta_k > 0:
+    daily_delta_k = delta_k / days
+    change_k_ml = (daily_delta_k * tank_vol) / conc_k if conc_k > 0 else 0
+    new_dose_k = current_dose_k_ml + change_k_ml
+    correction_text_k = f"+{change_k_ml:.1f} мл/день"
+elif delta_k < 0:
+    daily_delta_k = abs(delta_k) / days
+    reduce_k_ml = (daily_delta_k * tank_vol) / conc_k if conc_k > 0 else 0
+    new_dose_k = max(0, current_dose_k_ml - reduce_k_ml)
+    correction_text_k = f"-{reduce_k_ml:.1f} мл/день"
+else:
+    new_dose_k = current_dose_k_ml
+    correction_text_k = "без змін"
 
 col_rec1, col_rec2, col_rec3 = st.columns(3)
 
@@ -464,51 +492,52 @@ with col_rec1:
     st.metric("Поточна доза", f"{current_dose_n_ml:.1f} мл/день")
     
     if delta_no3 > 0:
-        st.warning(f"📈 **Дефіцит NO₃:** {delta_no3:.1f} мг/л")
-        st.info(f"➕ **Додайте +{change_n_ml:.1f} мл/день**")
+        st.warning(f"📈 **Дефіцит NO₃:** {delta_no3:.1f} мг/л за {days} днів")
+        st.info(f"➕ **Додайте {change_n_ml:.1f} мл/день до поточної дози**")
     elif delta_no3 < 0:
-        st.warning(f"📉 **Надлишок NO₃:** {abs(delta_no3):.1f} мг/л")
+        st.warning(f"📉 **Надлишок NO₃:** {abs(delta_no3):.1f} мг/л за {days} днів")
         st.info(f"➖ **Зменште на {reduce_n_ml:.1f} мл/день**")
     else:
         st.success("✅ NO₃ в нормі")
     
-    st.metric("Нова рекомендована доза", f"{max(0, new_dose_n):.1f} мл/день")
+    st.metric("Нова рекомендована доза", f"{new_dose_n:.1f} мл/день")
 
 with col_rec2:
     st.subheader("💧 Фосфор (P)")
     st.metric("Поточна доза", f"{current_dose_p_ml:.2f} мл/день")
     
     if delta_po4 > 0:
-        st.warning(f"📈 **Дефіцит PO₄:** {delta_po4:.2f} мг/л")
-        st.info(f"➕ **Додайте +{change_p_ml:.2f} мл/день**")
+        st.warning(f"📈 **Дефіцит PO₄:** {delta_po4:.2f} мг/л за {days} днів")
+        st.info(f"➕ **Додайте {change_p_ml:.2f} мл/день до поточної дози**")
     elif delta_po4 < 0:
-        st.warning(f"📉 **Надлишок PO₄:** {abs(delta_po4):.2f} мг/л")
+        st.warning(f"📉 **Надлишок PO₄:** {abs(delta_po4):.2f} мг/л за {days} днів")
         st.info(f"➖ **Зменште на {reduce_p_ml:.2f} мл/день**")
     else:
         st.success("✅ PO₄ в нормі")
     
-    st.metric("Нова рекомендована доза", f"{max(0, new_dose_p):.2f} мл/день")
+    st.metric("Нова рекомендована доза", f"{new_dose_p:.2f} мл/день")
 
 with col_rec3:
     st.subheader("🌾 Калій (K)")
     st.metric("Поточна доза", f"{current_dose_k_ml:.1f} мл/день")
     
     if delta_k > 0:
-        st.warning(f"📈 **Дефіцит K:** {delta_k:.1f} мг/л")
-        st.info(f"➕ **Додайте +{change_k_ml:.1f} мл/день**")
+        st.warning(f"📈 **Дефіцит K:** {delta_k:.1f} мг/л за {days} днів")
+        st.info(f"➕ **Додайте {change_k_ml:.1f} мл/день до поточної дози**")
     elif delta_k < 0:
-        st.warning(f"📉 **Надлишок K:** {abs(delta_k):.1f} мг/л")
+        st.warning(f"📉 **Надлишок K:** {abs(delta_k):.1f} мг/л за {days} днів")
         st.info(f"➖ **Зменште на {reduce_k_ml:.1f} мл/день**")
     else:
         st.success("✅ K в нормі")
     
-    st.metric("Нова рекомендована доза", f"{max(0, new_dose_k):.1f} мл/день")
+    st.metric("Нова рекомендована доза", f"{new_dose_k:.1f} мл/день")
 
 # Додаткова інформація
 st.caption(f"""
 💡 **Як читати рекомендації:**
-- Якщо є **дефіцит** — додайте вказану кількість до поточної дози
-- Якщо є **надлишок** — зменште поточну дозу на вказану кількість
+- Дефіцит/надлишок вказано за **{days} днів**
+- Корекція розподілена на **{days} днів** — це **ДОБОВА зміна** дози
+- Приклад: якщо дефіцит 10 мг/л за 5 днів → додавайте +2 мг/л кожен день
 - Змінюйте дозування **поступово**, не більше ніж на 20% за день
 """)
 
