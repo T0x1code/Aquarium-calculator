@@ -115,20 +115,82 @@ with st.sidebar:
     
     days = st.slider("Період прогнозу (днів)", 1, 14, 7)
 
-# ======================== 1. РЕМІНЕРАЛІЗАТОР (ТВІЙ РЕЦЕПТ) ========================
-st.header("💎 1. Ремінералізатор (Твій рецепт)")
-with st.expander("Розрахунок солей для підміни"):
-    c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0)
-    f = c_vol / 10.0
-    st.write(f"**Для {c_vol:.0f} л осмосу додай:**")
-    st.info(f"""
-    🧂 **Склад ремінералізатора:**
-    - **{0.325 * f:.3f} г** $CaCO_3$ (кальцій карбонат)
-    - **{0.553 * f:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид дигідрат)
-    - **{0.936 * f:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат гептагідрат)
+# ======================== 1. РЕМІНЕРАЛІЗАТОР (ДИНАМІЧНИЙ РОЗРАХУНОК) ========================
+st.header("💎 1. Ремінералізатор (Динамічний розрахунок)")
+with st.expander("Розрахунок солей для підміни", expanded=True):
+    col_rem1, col_rem2 = st.columns(2)
     
-    ⚡ **Після додавання отримаєш:** ~GH 6, Ca:Mg ≈ 3:1
-    """)
+    with col_rem1:
+        c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
+        st.caption("🧪 Ваш рецепт ремінералізації")
+        
+        # Базові компоненти
+        st.markdown("**Постійні компоненти:**")
+        caco3_g = 0.325 * (c_vol / 10.0)
+        mgso4_g = 0.936 * (c_vol / 10.0)
+        
+        st.write(f"- **{caco3_g:.3f} г** $CaCO_3$ (кальцій карбонат) — основа жорсткості")
+        st.write(f"- **{mgso4_g:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат) — магній")
+        
+    with col_rem2:
+        st.markdown("**🎯 Налаштування Ca:Mg співвідношення:**")
+        
+        # Бажане співвідношення Ca:Mg
+        target_ca_mg_ratio = st.slider(
+            "Бажане співвідношення Ca:Mg", 
+            min_value=1.0, 
+            max_value=6.0, 
+            value=3.0, 
+            step=0.5,
+            help="Оптимальне співвідношення для більшості рослин 3:1"
+        )
+        
+        # Пояснення
+        st.caption(f"💡 Цільове Ca:Mg = {target_ca_mg_ratio:.1f}:1")
+        
+        # Розрахунок необхідного CaCl2
+        # Базові значення з рецепту:
+        # CaCO3 дає Ca (мол.маса CaCO3 = 100, Ca = 40 → 40% Ca)
+        ca_from_caco3 = caco3_g * 0.4  # 40% кальцію в CaCO3
+        mg_from_mgso4 = mgso4_g * 0.0986  # ~9.86% магнію в MgSO4·7H2O (24/243.3)
+        
+        # Необхідна кількість кальцію для досягнення потрібного співвідношення
+        # target_ratio = (ca_from_caco3 + ca_from_cacl2) / mg_from_mgso4
+        # => ca_from_cacl2 = (target_ratio * mg_from_mgso4) - ca_from_caco3
+        required_ca = (target_ca_mg_ratio * mg_from_mgso4) - ca_from_caco3
+        
+        if required_ca > 0:
+            # CaCl2·2H2O містить ~27.3% кальцію (40/147)
+            cacl2_g = required_ca / 0.273
+            st.success(f"""
+            **Додатково для співвідношення {target_ca_mg_ratio:.1f}:1:**
+            
+            ➕ **{cacl2_g:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид дигідрат)
+            """)
+        else:
+            cacl2_g = 0
+            st.info(f"✅ При поточному рецепті Ca:Mg = {ca_from_caco3/mg_from_mgso4:.1f}:1. Додатковий CaCl₂ не потрібен.")
+        
+        # Підсумковий розрахунок
+        total_ca = ca_from_caco3 + max(0, required_ca)
+        total_mg = mg_from_mgso4
+        actual_ratio = total_ca / total_mg if total_mg > 0 else 0
+        
+        st.divider()
+        st.markdown("**📊 Підсумок для вашої води:**")
+        st.metric("Фактичне Ca:Mg", f"{actual_ratio:.1f}:1", delta=f"ціль {target_ca_mg_ratio:.1f}:1")
+        
+        # Перевірка на досяжність
+        if required_ca < 0 and target_ca_mg_ratio < ca_from_caco3/mg_from_mgso4:
+            st.warning("⚠️ Для досягнення нижчого співвідношення Ca:Mg потрібно зменшити CaCO₃ або збільшити MgSO₄")
+        
+        st.caption("""
+        **📖 Як використовувати:**
+        1. Введіть об'єм води для підміни
+        2. Виберіть бажане співвідношення Ca:Mg (оптимум 3:1)
+        3. Додайте всі три солі у воду (CaCO₃ + MgSO₄ + CaCl₂ при потребі)
+        4. Розмішайте до повного розчинення
+        """)
 
 # ======================== 2. КАЛЬКУЛЯТОР РЕАЛЬНОГО СПОЖИВАННЯ ========================
 st.header("📉 2. Калькулятор реального споживання (на основі тестів)")
