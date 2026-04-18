@@ -575,13 +575,6 @@ with col_summary2:
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
 
-current_params = {
-    'no3': final_no3, 'po4': final_po4, 'k': final_k,
-    'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
-}
-save_to_history(current_params)
-st.session_state.last_params = current_params
-
 report = f"""=== TOXICODE AQUARIUM V10.3 REPORT ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
@@ -621,14 +614,43 @@ st.code(report, language="text")
 with st.expander("📜 Історія змін параметрів"):
     st.caption("Зберігайте показники вручну для відстеження динаміки (рекомендується 1 раз на день)")
     
+    # Кнопка для ручного збереження поточних параметрів
+    col_save1, col_save2 = st.columns([3, 1])
+    with col_save1:
+        save_note = st.text_input("Нотатка до збереження (необов'язково)", key="save_note", placeholder="Наприклад: після підміни, змінив дозування...")
+    with col_save2:
+        if st.button("💾 Зберегти поточні показники", key="manual_save"):
+            current_params = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'note': save_note if save_note else "",
+                'no3': final_no3, 'po4': final_po4, 'k': final_k,
+                'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
+            }
+            st.session_state.history.append(current_params)
+            if len(st.session_state.history) > 50:
+                st.session_state.history = st.session_state.history[-50:]
+            st.session_state.last_params = {
+                'no3': final_no3, 'po4': final_po4, 'k': final_k,
+                'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
+            }
+            st.success(f"✅ Параметри збережено! ({datetime.now().strftime('%H:%M:%S')})")
+            st.rerun()
+    
+    st.divider()
+    
     col_history1, col_history2 = st.columns([2, 1])
     
     with col_history1:
         if st.session_state.history:
             df_history = pd.DataFrame(st.session_state.history)
             df_history['дата'] = pd.to_datetime(df_history['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
-            display_df = df_history[['дата', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
-            display_df.columns = ['Дата', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
+            # Показуємо нотатку якщо є
+            if 'note' in df_history.columns:
+                display_df = df_history[['дата', 'note', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
+                display_df.columns = ['Дата', 'Нотатка', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
+            else:
+                display_df = df_history[['дата', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
+                display_df.columns = ['Дата', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
             st.dataframe(display_df, use_container_width=True)
             
             if len(df_history) > 1:
@@ -637,13 +659,14 @@ with st.expander("📜 Історія змін параметрів"):
                 df_history_numeric = df_history_numeric.set_index('timestamp')
                 st.line_chart(df_history_numeric)
         else:
-            st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' в бічній панелі.")
+            st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' вище.")
     
     with col_history2:
         st.markdown("**💡 Порада:**")
         st.caption("""
         - Зберігайте показники **1 раз на день** в один і той самий час
         - Найкраще робити це **перед ввімкненням CO₂**
+        - Додавайте нотатки для важливих змін
         - Це допоможе відстежувати довгострокову динаміку
         """)
         
