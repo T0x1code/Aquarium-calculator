@@ -71,88 +71,61 @@ with st.sidebar:
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
 st.header("1. Ремінералізатор")
 with st.expander("Розрахунок ремінералізації для підміни", expanded=True):
-    rem_mode = st.radio("Тип ремінералізатора:", ["Ручний розрахунок (солі)", "Salty Shrimp GH+", "Aquayer GH/KH+"], horizontal=True)
+    rem_mode = st.radio("Тип ремінералізатора:", ["Ручний розрахунок (солі)", "Salty Shrimp GH+", "Quayer GH/KH+"], horizontal=True)
     
-    c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
+    c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0)
     
     if rem_mode == "Ручний розрахунок (солі)":
         target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5)
         target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5)
         target_ca_mg = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
         
-        # Розрахунок солей (виправлені коефіцієнти)
-        # CaCO3 для KH: 1°dH KH = 17.86 мг/л CaCO3
-        caco3_mg_per_l = target_kh * 17.86
-        caco3_g = caco3_mg_per_l * c_vol / 1000
+        # Розрахунок солей
+        kh_from_caco3 = target_kh * 17.86 * c_vol / 1000
+        ca_from_caco3_g = kh_from_caco3 * 0.4
         
-        # MgSO4·7H2O для Mg: потрібно розрахувати Mg з GH
-        # 1°dH = 7.14 мг/л CaO еквівалент
-        # Для спрощення: Mg (мг/л) ≈ target_gh * 2.5 (середнє значення)
-        mg_mgl = target_gh * 2.5
-        mgso4_g = (mg_mgl * c_vol / 1000) / 0.0986  # 9.86% Mg в MgSO4·7H2O
+        total_ca_mg_mgl = target_gh * 7.14
+        ratio_factor = target_ca_mg / 5.1 + 1 / 4.3
+        mg_mgl = target_gh / ratio_factor
+        ca_mgl = target_ca_mg * mg_mgl
         
-        # CaCl2 для решти кальцію
-        # Ca з CaCO3: 40% від маси
-        ca_from_caco3_mgl = (caco3_g * 1000 / c_vol) * 0.4
-        ca_target_mgl = target_ca_mg * mg_mgl
-        ca_need_mgl = max(0, ca_target_mgl - ca_from_caco3_mgl)
-        cacl2_g = (ca_need_mgl * c_vol / 1000) / 0.273  # 27.3% Ca в CaCl2·2H2O
+        total_ca_g = ca_mgl * c_vol / 1000
+        total_mg_g = mg_mgl * c_vol / 1000
+        
+        remaining_ca_g = max(0, total_ca_g - ca_from_caco3_g)
+        cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
+        mgso4_g = total_mg_g / 0.0986 if total_mg_g > 0 else 0
         
         st.info(f"""
         **Для {c_vol:.0f} л осмосу додай:**
-        - **{caco3_g:.3f} г** CaCO₃ → KH = {target_kh:.1f}°dH
+        - **{kh_from_caco3:.3f} г** CaCO₃ (кальцій карбонат) → KH = {target_kh:.1f}°dH
+        - **{cacl2_g:.3f} г** CaCl₂·2H₂O → додатковий кальцій
         - **{mgso4_g:.3f} г** MgSO₄·7H₂O → магній
-        - **{cacl2_g:.3f} г** CaCl₂·2H₂O → додатковий кальцій (при потребі)
         """)
         
-        if cacl2_g <= 0.01:
-            st.success("✅ CaCO₃ дає достатньо кальцію, додатковий CaCl₂ не потрібен")
-    
     elif rem_mode == "Salty Shrimp GH+":
         st.info("""
         **Salty Shrimp Bee Shrimp Mineral GH+**
         - Піднімає тільки GH, не впливає на KH
-        - **Офіційне дозування:** 3г на 20л води = +1°dH GH
-        - Тобто: **1.5г на 10л = +1°dH GH**
-        """)
-        current_gh = st.number_input("Поточний GH в акваріумі (°dH)", value=4.0, step=0.5)
-        target_gh_total = st.number_input("Бажаний GH в акваріумі (°dH)", value=6.0, step=0.5)
-        gh_increase = max(0, target_gh_total - current_gh)
+        - Дозування: 1г на 10л води = +1°dH GH
         
-        if gh_increase > 0:
-            ss_dose = gh_increase * c_vol * 1.5 / 10
-            st.success(f"**Для підняття GH на {gh_increase:.1f}°dH додай {ss_dose:.1f} г Salty Shrimp GH+ на {c_vol:.0f} л води**")
-        else:
-            st.info("GH вже досягнуто, додавати не потрібно")
-    
-    else:  # Aquayer GH/KH+
+        **Розрахунок:**
+        """)
+        target_gh_only = st.slider("Потрібне підняття GH (°dH)", 0.0, 10.0, 4.0, 0.5)
+        ss_dose = target_gh_only * c_vol / 10
+        st.success(f"**Додай {ss_dose:.1f} г Salty Shrimp GH+ на {c_vol:.0f} л води**")
+        
+    else:  # Quayer GH/KH+
         st.info("""
-        **Aquayer Ремінерал GH/KH+**
-        - Піднімає і GH, і KH одночасно у співвідношенні 1:1
-        - **Офіційне дозування:** 2г на 10л води = +1°dH GH та +1°dH KH
+        **QUAYER Ремінерал GH/KH+**
+        - Піднімає і GH, і KH одночасно
+        - Дозування: 1г на 10л води = +1°dH GH та +1°dH KH
+        
+        **Розрахунок:**
         """)
-        current_gh = st.number_input("Поточний GH в акваріумі (°dH)", value=4.0, step=0.5, key="aq_gh")
-        current_kh = st.number_input("Поточний KH в акваріумі (°dH)", value=1.0, step=0.5, key="aq_kh")
-        target_gh_total = st.number_input("Бажаний GH в акваріумі (°dH)", value=6.0, step=0.5, key="aq_target_gh")
-        target_kh_total = st.number_input("Бажаний KH в акваріумі (°dH)", value=2.0, step=0.5, key="aq_target_kh")
-        
-        gh_increase = max(0, target_gh_total - current_gh)
-        kh_increase = max(0, target_kh_total - current_kh)
-        
-        # Беремо максимальне потрібне підняття (бо засіб піднімає обидва параметри)
-        needed_increase = max(gh_increase, kh_increase)
-        
-        if needed_increase > 0:
-            q_dose = needed_increase * c_vol * 2 / 10
-            st.success(f"""
-            **Для підняття на {needed_increase:.1f}°dH додай {q_dose:.1f} г Aquayer GH/KH+ на {c_vol:.0f} л води**
-            
-            Прогноз після додавання:
-            - GH: {current_gh + needed_increase:.1f}°dH
-            - KH: {current_kh + needed_increase:.1f}°dH
-            """)
-        else:
-            st.info("Параметри вже досягнуто, додавати не потрібно")
+        target_gh_kh = st.slider("Потрібне підняття GH/KH (°dH)", 0.0, 10.0, 3.0, 0.5)
+        q_dose = target_gh_kh * c_vol / 10
+        st.success(f"**Додай {q_dose:.1f} г Quayer GH/KH+ на {c_vol:.0f} л води**")
 
 # ======================== 2. КАЛЬКУЛЯТОР СПОЖИВАННЯ ========================
 st.header("2. Калькулятор реального споживання")
