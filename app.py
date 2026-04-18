@@ -538,10 +538,39 @@ with col_summary1:
 
 with col_summary2:
     st.subheader(f"📈 Прогноз через {days} днів")
-    st.metric("NO₃", f"{f_end['NO3']:.1f} мг/л", delta=f"{f_end['NO3'] - target_no3:.1f}")
-    st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", delta=f"{f_end['PO4'] - target_po4_real:.2f}")
-    st.metric("K", f"{f_end['K']:.1f} мг/л", delta=f"{f_end['K'] - target_k:.1f}")
-
+    
+    # Використовуємо forecast[-1] який вже враховує:
+    # - поточні добрива (current_dose_n_ml * conc_n_daily / tank_vol)
+    # - споживання (daily_no3 * stability)
+    # - підміну та внесення після підміни
+    st.metric("NO₃", f"{f_end['NO3']:.1f} мг/л", 
+              delta=f"{f_end['NO3'] - final_no3:.1f}",
+              help="Прогноз враховує поточне дозування та споживання")
+    
+    st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", 
+              delta=f"{f_end['PO4'] - final_po4:.2f}",
+              help="Прогноз враховує поточне дозування та споживання")
+    
+    st.metric("K", f"{f_end['K']:.1f} мг/л", 
+              delta=f"{f_end['K'] - final_k:.1f}",
+              help="Прогноз враховує поточне дозування та споживання")
+    
+    # Додаткова інформація про фактори, що впливають на прогноз
+    st.caption(f"""
+    📌 **Фактори прогнозу:**
+    - Щоденне дозування: N={current_dose_n_ml:.1f} мл, P={current_dose_p_ml:.2f} мл, K={current_dose_k_ml:.1f} мл
+    - Щоденне споживання: N={daily_no3:.1f}, P={daily_po4:.2f}, K={daily_k:.1f} мг/л
+    - Коефіцієнт стабільності: {stability:.2f}
+    """)
+    
+    # Попередження якщо прогноз показує різке падіння
+    if f_end['NO3'] < 3:
+        st.error("⚠️ Прогнозується критичне падіння NO₃! Збільште дозу N добрив.")
+    if f_end['PO4'] < 0.1:
+        st.error("⚠️ Прогнозується критичне падіння PO₄! Збільште дозу P добрив.")
+    if f_end['K'] < k_opt_range['min']:
+        st.error(f"⚠️ Прогнозується падіння K нижче {k_opt_range['min']:.0f} мг/л! Збільште дозу K добрив.")
+        
 # ======================== 11. ЗВІТ ========================
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
