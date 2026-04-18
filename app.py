@@ -456,6 +456,8 @@ if st.session_state.alerts:
         unique_alerts = list(set(st.session_state.alerts[-5:]))
         for alert in unique_alerts:
             st.warning(alert)
+
+
             
 # ======================== 8. K/GH АНАЛІЗ ========================
 st.header("🧂 8. K/GH співвідношення")
