@@ -279,10 +279,16 @@ with col3:
     daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=float(default_po4_cons), step=0.05, format="%.2f")
     daily_k = st.number_input("Споживання K (мг/л/день)", value=float(default_k_cons), step=0.1, format="%.1f")
     
-    # Попередження про різкі зміни
-    if st.session_state.last_params:
-        check_shock(st.session_state.last_params.get('no3'), no3_now, 'NO3')
-        check_shock(st.session_state.last_params.get('po4'), po4_now, 'PO4')
+    # Очищаємо старі попередження перед новою перевіркою
+    if st.session_state.get('last_params'):
+        # Перевіряємо тільки якщо параметри змінилися
+        if (st.session_state.last_params.get('no3') != no3_now or 
+            st.session_state.last_params.get('po4') != po4_now):
+            # Очищаємо тільки старі попередження про різкі зміни
+            st.session_state.alerts = [a for a in st.session_state.alerts 
+                                       if not a.startswith("⚠️ Різка зміна")]
+            check_shock(st.session_state.last_params.get('no3'), no3_now, 'NO3')
+            check_shock(st.session_state.last_params.get('po4'), po4_now, 'PO4')
 
 # ======================== 4. ПІДМІНА ВОДИ ========================
 st.divider()
