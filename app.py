@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.set_page_config(page_title="Toxicode Aquarium System V10.5", layout="wide")
-st.title("🌿 Toxicode Aquarium System V10.5 — Максимальний контроль")
+st.set_page_config(page_title="Toxicode Aquarium System V10.6", layout="wide")
+st.title("🌿 Toxicode Aquarium System V10.6 — Максимальний контроль")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ СЕСІЇ ========================
 if 'history' not in st.session_state:
@@ -113,10 +113,10 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🎯 Цільові показники")
-    target_no3 = st.number_input("Ціль NO3 (мг/л)", value=15.0, step=1.0)
-    target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0, step=0.1)
-    target_k = st.number_input("Ціль K (мг/л)", value=15.0, step=1.0)
-    target_tds = st.number_input("Ціль TDS", value=120.0, step=5.0)
+    target_no3 = st.number_input("Ціль NO3 (мг/л)", value=15.0, step=1.0, key="target_no3_side")
+    target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0, step=0.1, key="target_po4_side")
+    target_k = st.number_input("Ціль K (мг/л)", value=15.0, step=1.0, key="target_k_side")
+    target_tds = st.number_input("Ціль TDS", value=120.0, step=5.0, key="target_tds_side")
     
     st.divider()
     st.subheader("🔬 Розширені налаштування")
@@ -125,7 +125,7 @@ with st.sidebar:
     co2_max_opt = st.slider("Верхня межа CO₂ (мг/л)", 0, 100, 45)
     days = st.slider("Період прогнозу (днів)", 1, 30, 7)
     
-    if st.button("📊 Зберегти показники"):
+    if st.button("📊 Зберегти показники", key="save_btn"):
         st.success("Збережено!")
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
@@ -135,9 +135,9 @@ with st.expander("Розрахунок солей для підміни", expand
     
     with col_rem1:
         c_vol = st.number_input("Літрів осмосу", value=10.0, step=5.0, key="rem_vol")
-        target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5)
-        target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5)
-        target_ca_mg = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
+        target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5, key="target_gh")
+        target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5, key="target_kh")
+        target_ca_mg = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5, key="target_ca_mg")
         
     with col_rem2:
         if target_ca_mg > 0:
@@ -213,16 +213,16 @@ st.header("📋 3. Поточні параметри")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    no3_now = st.number_input("NO3 (мг/л)", value=10.0, step=0.5, format="%.1f")
-    po4_now = st.number_input("PO4 (мг/л)", value=0.5, step=0.05, format="%.2f")
-    k_now = st.number_input("K (мг/л)", value=10.0, step=0.5, format="%.1f")
-    base_tds = st.number_input("TDS", value=150.0, step=5.0, format="%.0f")
+    no3_now = st.number_input("NO3 (мг/л)", value=10.0, step=0.5, format="%.1f", key="no3_now")
+    po4_now = st.number_input("PO4 (мг/л)", value=0.5, step=0.05, format="%.2f", key="po4_now")
+    k_now = st.number_input("K (мг/л)", value=10.0, step=0.5, format="%.1f", key="k_now")
+    base_tds = st.number_input("TDS", value=150.0, step=5.0, format="%.0f", key="base_tds")
 
 with col2:
-    gh = st.number_input("GH (°dH)", value=6, step=1)
-    kh = st.number_input("KH (°dH)", value=2, step=1)
-    ph_morning = st.number_input("pH (ранок)", value=7.2, step=0.1, format="%.1f")
-    ph_evening = st.number_input("pH (вечір)", value=6.8, step=0.1, format="%.1f")
+    gh = st.number_input("GH (°dH)", value=6, step=1, key="gh")
+    kh = st.number_input("KH (°dH)", value=2, step=1, key="kh")
+    ph_morning = st.number_input("pH (ранок)", value=7.2, step=0.1, format="%.1f", key="ph_morning")
+    ph_evening = st.number_input("pH (вечір)", value=6.8, step=0.1, format="%.1f", key="ph_evening")
     co2_val = calculate_co2(kh, ph_evening)
     st.metric("CO₂", f"{co2_val:.1f} мг/л")
 
@@ -231,9 +231,9 @@ with col3:
     default_po4_cons = consumption_results.get('PO4', 0.1)
     default_k_cons = consumption_results.get('K', 1.0)
     
-    daily_no3 = st.number_input("Споживання NO3", value=float(default_no3_cons), step=0.1, format="%.1f")
-    daily_po4 = st.number_input("Споживання PO4", value=float(default_po4_cons), step=0.05, format="%.2f")
-    daily_k = st.number_input("Споживання K", value=float(default_k_cons), step=0.1, format="%.1f")
+    daily_no3 = st.number_input("Споживання NO3", value=float(default_no3_cons), step=0.1, format="%.1f", key="daily_no3")
+    daily_po4 = st.number_input("Споживання PO4", value=float(default_po4_cons), step=0.05, format="%.2f", key="daily_po4")
+    daily_k = st.number_input("Споживання K", value=float(default_k_cons), step=0.1, format="%.1f", key="daily_k")
 
 # ======================== 4. ПІДМІНА ========================
 st.divider()
@@ -242,7 +242,7 @@ st.header("💧 4. Підміна")
 c_change, c_dosing = st.columns(2)
 
 with c_change:
-    change_l = st.number_input("Літри підміни", value=50.0, step=1.0)
+    change_l = st.number_input("Літри підміни", value=50.0, step=1.0, key="change_l")
     pct = change_l / tank_vol if tank_vol > 0 else 0
     st.metric("Відсоток", f"{pct*100:.1f}%")
 
@@ -408,7 +408,7 @@ else:
 st.divider()
 st.subheader("📋 11. Звіт")
 
-report = f"""=== TOXICODE AQUARIUM V10.5 ===
+report = f"""=== TOXICODE AQUARIUM V10.6 ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ПАРАМЕТРИ
@@ -431,4 +431,4 @@ K: {f_end['K']:.1f}
 
 st.code(report, language="text")
 
-st.caption("⚡ Toxicode V10.5 | Steady State | Прогноз | K/GH | ШІ аналіз")
+st.caption("⚡ Toxicode V10.6 | Steady State | Прогноз | K/GH | ШІ аналіз")
