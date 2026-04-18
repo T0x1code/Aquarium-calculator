@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from datetime import datetime
 import json
 
-st.set_page_config(page_title="Toxicode Aquarium System V10.0", layout="wide")
-st.title("🌿 Toxicode Aquarium System V10.0 — Штучний Інтелект Акваріуміста")
+st.set_page_config(page_title="Toxicode Aquarium System V10.1", layout="wide")
+st.title("🌿 Toxicode Aquarium System V10.1 — Штучний Інтелект Акваріуміста")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ СЕСІЇ ========================
 if 'history' not in st.session_state:
@@ -99,9 +98,9 @@ def save_to_history(params):
         **params
     }
     st.session_state.history.append(record)
-    # Залишаємо тільки останні 100 записів
-    if len(st.session_state.history) > 100:
-        st.session_state.history = st.session_state.history[-100:]
+    # Залишаємо тільки останні 50 записів
+    if len(st.session_state.history) > 50:
+        st.session_state.history = st.session_state.history[-50:]
 
 # ======================== SIDEBAR ========================
 with st.sidebar:
@@ -549,7 +548,7 @@ with col_summary2:
     st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", delta=f"{f_end['PO4'] - target_po4_real:.2f}")
     st.metric("K", f"{f_end['K']:.1f} мг/л", delta=f"{f_end['K'] - target_k:.1f}")
 
-# ======================== 11. ЗВІРТ ========================
+# ======================== 11. ЗВІТ ========================
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
 
@@ -561,7 +560,7 @@ current_params = {
 save_to_history(current_params)
 st.session_state.last_params = current_params
 
-report = f"""=== TOXICODE AQUARIUM V10.0 REPORT ===
+report = f"""=== TOXICODE AQUARIUM V10.1 REPORT ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ОСНОВНІ ПАРАМЕТРИ
@@ -602,10 +601,12 @@ with st.expander("📜 Історія змін параметрів"):
         df_history = pd.DataFrame(st.session_state.history)
         st.dataframe(df_history.tail(10), use_container_width=True)
         
-        # Графік історії NO3
+        # Простий графік через st.line_chart замість plotly
         if len(df_history) > 1:
-            fig = px.line(df_history, x='timestamp', y='no3', title='Динаміка NO3 за часом')
-            st.plotly_chart(fig, use_container_width=True)
+            df_history_numeric = df_history[['timestamp', 'no3']].copy()
+            df_history_numeric['timestamp'] = pd.to_datetime(df_history_numeric['timestamp'])
+            df_history_numeric = df_history_numeric.set_index('timestamp')
+            st.line_chart(df_history_numeric)
     else:
         st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' в бічній панелі.")
 
@@ -629,4 +630,4 @@ with st.expander("🛡️ Валідація та безпека"):
     if final_k > k_opt_range['max']:
         st.warning("⚠️ K вище максимуму — ризик блокування Ca/Mg")
 
-st.caption("⚡ Toxicode V10.0 | Штучний Інтелект | Історія параметрів | Прогноз водоростей")
+st.caption("⚡ Toxicode V10.1 | Штучний Інтелект | Історія параметрів | Прогноз водоростей")
