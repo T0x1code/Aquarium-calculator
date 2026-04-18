@@ -68,98 +68,65 @@ with st.sidebar:
     
     days = st.slider("Період прогнозу (днів)", 1, 14, 7)
 
-# ======================== 1. РЕМІНЕРАЛІЗАТОР (РУЧНИЙ РОЗРАХУНОК) ========================
-st.header("💎 1. Ремінералізатор")
-with st.expander("Розрахунок солей для підміни", expanded=True):
-    st.markdown("""
-    **Як це працює:**  
-    Ви задаєте бажані параметри води (GH, KH), а система розраховує точну кількість солей.
-    """)
+# ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
+st.header("1. Ремінералізатор")
+with st.expander("Розрахунок ремінералізації для підміни", expanded=True):
+    rem_mode = st.radio("Тип ремінералізатора:", ["Ручний розрахунок (солі)", "Salty Shrimp GH+", "Quayer GH/KH+"], horizontal=True)
     
-    col_rem1, col_rem2 = st.columns(2)
+    c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0)
     
-    with col_rem1:
-        c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
+    if rem_mode == "Ручний розрахунок (солі)":
+        target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5)
+        target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5)
+        target_ca_mg = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
         
-        st.divider()
-        st.subheader("🎯 Цільові параметри")
+        # Розрахунок солей
+        kh_from_caco3 = target_kh * 17.86 * c_vol / 1000
+        ca_from_caco3_g = kh_from_caco3 * 0.4
         
-        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=6.0, step=0.5,
-                              help="Загальна жорсткість (кальцій + магній)")
+        total_ca_mg_mgl = target_gh * 7.14
+        ratio_factor = target_ca_mg / 5.1 + 1 / 4.3
+        mg_mgl = target_gh / ratio_factor
+        ca_mgl = target_ca_mg * mg_mgl
         
-        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=2.0, step=0.5,
-                              help="Карбонатна жорсткість (буферна ємність)")
+        total_ca_g = ca_mgl * c_vol / 1000
+        total_mg_g = mg_mgl * c_vol / 1000
         
-    with col_rem2:
-        st.subheader("🧪 Розрахований склад")
+        remaining_ca_g = max(0, total_ca_g - ca_from_caco3_g)
+        cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
+        mgso4_g = total_mg_g / 0.0986 if total_mg_g > 0 else 0
         
-        # ========== ХІМІЧНІ КОНСТАНТИ ==========
-        # 1°dH KH = 17.86 мг/л CaCO3
-        # 1°dH GH = 7.14 мг/л CaO еквівалент
-        
-        # Розрахунок CaCO3 для KH
-        caco3_mg_per_l = target_kh * 17.86
-        caco3_g = caco3_mg_per_l * c_vol / 1000
-        
-        # Розрахунок MgSO4·7H2O для GH
-        # Вважаємо що 60% GH забезпечує Mg, 40% - Ca (приблизне співвідношення)
-        mg_part_gh = target_gh * 0.6  # 60% GH від магнію
-        # 1°dH від Mg = 4.34 мг/л Mg
-        mg_mgl = mg_part_gh * 4.34
-        # MgSO4·7H2O містить 9.86% Mg
-        mgso4_g = (mg_mgl * c_vol / 1000) / 0.0986
-        
-        # Розрахунок CaCl2·2H2O для решти GH
-        ca_part_gh = target_gh * 0.4  # 40% GH від кальцію
-        # 1°dH від Ca = 5.1 мг/л Ca
-        ca_mgl = ca_part_gh * 5.1
-        # CaCl2·2H2O містить 27.3% Ca
-        cacl2_g = (ca_mgl * c_vol / 1000) / 0.273
-        
-        # ========== ВИВІД РЕЗУЛЬТАТІВ ==========
-        st.success(f"""
+        st.info(f"""
         **Для {c_vol:.0f} л осмосу додай:**
-        
-        🧂 **{caco3_g:.3f} г** $CaCO_3$ (кальцій карбонат)
-        → забезпечує KH = {target_kh:.1f}°dH
-        
-        🧂 **{mgso4_g:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат)
-        → забезпечує {mg_part_gh:.1f}°dH з {target_gh:.1f}°dH GH
-        
-        🧂 **{cacl2_g:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид)
-        → забезпечує {ca_part_gh:.1f}°dH з {target_gh:.1f}°dH GH
+        - **{kh_from_caco3:.3f} г** CaCO₃ (кальцій карбонат) → KH = {target_kh:.1f}°dH
+        - **{cacl2_g:.3f} г** CaCl₂·2H₂O → додатковий кальцій
+        - **{mgso4_g:.3f} г** MgSO₄·7H₂O → магній
         """)
         
-        # ========== ПРОГНОЗ ПАРАМЕТРІВ ==========
-        st.divider()
-        st.subheader("📊 Прогнозовані параметри")
+    elif rem_mode == "Salty Shrimp GH+":
+        st.info("""
+        **Salty Shrimp Bee Shrimp Mineral GH+**
+        - Піднімає тільки GH, не впливає на KH
+        - Дозування: 1г на 10л води = +1°dH GH
         
-        # Перевірочний розрахунок
-        predicted_ca_mgl = (cacl2_g * 0.273 * 1000 / c_vol) + (caco3_g * 0.4 * 1000 / c_vol)
-        predicted_mg_mgl = mgso4_g * 0.0986 * 1000 / c_vol
-        predicted_gh = (predicted_ca_mgl / 5.1) + (predicted_mg_mgl / 4.3)
-        predicted_kh = (caco3_g * 1000 / c_vol) / 17.86
+        **Розрахунок:**
+        """)
+        target_gh_only = st.slider("Потрібне підняття GH (°dH)", 0.0, 10.0, 4.0, 0.5)
+        ss_dose = target_gh_only * c_vol / 10
+        st.success(f"**Додай {ss_dose:.1f} г Salty Shrimp GH+ на {c_vol:.0f} л води**")
         
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            st.metric("GH", f"{predicted_gh:.1f}°dH", delta=f"ціль {target_gh:.1f}")
-        with col_p2:
-            st.metric("KH", f"{predicted_kh:.1f}°dH", delta=f"ціль {target_kh:.1f}")
+    else:  # Quayer GH/KH+
+        st.info("""
+        **QUAYER Ремінерал GH/KH+**
+        - Піднімає і GH, і KH одночасно
+        - Дозування: 1г на 10л води = +1°dH GH та +1°dH KH
         
-        # ========== ІНСТРУКЦІЯ ==========
-        with st.expander("📖 Інструкція приготування"):
-            st.markdown(f"""
-            1. **Підготуйте {c_vol:.0f} л осмосу** (або дистильованої води)
-            2. **Додайте солі** в такому порядку:
-               - $CaCO_3$ — важко розчиняється, залиште на 1-2 години
-               - $MgSO_4$ — добре розчиняється
-               - $CaCl_2$ — додайте останнім, швидко розчиняється
-            3. **Перемішайте** до повного розчинення
-            4. **Виміряйте TDS** — має бути ~{target_gh * 10 + target_kh * 5:.0f} ppm
-            5. **Додайте в акваріум** поступово (не більше 30% об'єму за раз)
-            
-            ⚡ **Порада:** Для прискорення розчинення CaCO₃ можна використати газовану воду.
-            """)
+        **Розрахунок:**
+        """)
+        target_gh_kh = st.slider("Потрібне підняття GH/KH (°dH)", 0.0, 10.0, 3.0, 0.5)
+        q_dose = target_gh_kh * c_vol / 10
+        st.success(f"**Додай {q_dose:.1f} г Quayer GH/KH+ на {c_vol:.0f} л води**")
+
 
 # ======================== 2. КАЛЬКУЛЯТОР СПОЖИВАННЯ ========================
 st.header("2. Калькулятор реального споживання")
