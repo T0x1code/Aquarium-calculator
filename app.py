@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import json
 
-st.set_page_config(page_title="Toxicode Aquarium System V10.1", layout="wide")
-st.title("🌿 Toxicode Aquarium System V10.1 — Штучний Інтелект Акваріуміста")
+st.set_page_config(page_title="Toxicode Aquarium System V10.3", layout="wide")
+st.title("🌿 Toxicode Aquarium System V10.3 — Штучний Інтелект Акваріуміста")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ СЕСІЇ ========================
 if 'history' not in st.session_state:
@@ -87,7 +86,9 @@ def check_shock(prev_val, new_val, param_name, threshold=30):
     if prev_val and prev_val > 0:
         change_pct = abs((new_val - prev_val) / prev_val * 100)
         if change_pct > threshold:
-            st.session_state.alerts.append(f"⚠️ Різка зміна {param_name}: {change_pct:.0f}% за один період")
+            alert = f"⚠️ Різка зміна {param_name}: {change_pct:.0f}% за один період"
+            if alert not in st.session_state.alerts:
+                st.session_state.alerts.append(alert)
             return True
     return False
 
@@ -98,7 +99,6 @@ def save_to_history(params):
         **params
     }
     st.session_state.history.append(record)
-    # Залишаємо тільки останні 50 записів
     if len(st.session_state.history) > 50:
         st.session_state.history = st.session_state.history[-50:]
 
@@ -120,7 +120,6 @@ with st.sidebar:
     
     po4_unit = st.radio("Тест показує:", ["PO4 (фосфат)", "P (фосфор)"], horizontal=True)
     if po4_unit == "P (фосфор)":
-        st.caption("⚠️ Ваші цілі будуть автоматично перераховані: P × 3.07 = PO4")
         target_po4_real = target_po4 * 3.07
     else:
         target_po4_real = target_po4
@@ -136,11 +135,6 @@ with st.sidebar:
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
 st.header("💎 1. Ремінералізатор")
 with st.expander("Розрахунок солей для підміни", expanded=True):
-    st.markdown("""
-    **Як це працює:**  
-    Ви задаєте бажані параметри води (GH, KH, Ca:Mg), а система розраховує точну кількість солей.
-    """)
-    
     col_rem1, col_rem2 = st.columns(2)
     
     with col_rem1:
@@ -148,20 +142,13 @@ with st.expander("Розрахунок солей для підміни", expand
         
         st.divider()
         st.subheader("🎯 Цільові параметри")
-        
-        target_gh = st.slider("Цільовий GH (°dH)", min_value=1.0, max_value=20.0, value=6.0, step=0.5,
-                              help="Загальна жорсткість (кальцій + магній)")
-        
-        target_kh = st.slider("Цільовий KH (°dH)", min_value=0.0, max_value=15.0, value=2.0, step=0.5,
-                              help="Карбонатна жорсткість (буферна ємність)")
-        
-        target_ca_mg_ratio = st.slider("Цільове співвідношення Ca:Mg", min_value=1.0, max_value=6.0, value=3.0, step=0.5,
-                                       help="Оптимальне співвідношення для більшості рослин 3:1")
+        target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5)
+        target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5)
+        target_ca_mg_ratio = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
         
     with col_rem2:
         st.subheader("🧪 Розрахований склад")
         
-        # Хімічні константи
         if target_ca_mg_ratio > 0:
             ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
             mg_mgl = target_gh / ratio_factor if ratio_factor > 0 else 0
@@ -173,7 +160,6 @@ with st.expander("Розрахунок солей для підміни", expand
         total_ca_g = ca_mgl * c_vol / 1000
         total_mg_g = mg_mgl * c_vol / 1000
         
-        # Вибір джерел
         kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)
         ca_from_caco3_g = kh_from_caco3 * 0.4
         
@@ -184,29 +170,16 @@ with st.expander("Розрахунок солей для підміни", expand
         st.success(f"""
         **Для {c_vol:.0f} л осмосу додай:**
         
-        🧂 **{kh_from_caco3:.3f} г** $CaCO_3$ (кальцій карбонат)
-        🧂 **{cacl2_g:.3f} г** $CaCl_2 \\cdot 2H_2O$ (кальцій хлорид)
-        🧂 **{mgso4_g:.3f} г** $MgSO_4 \\cdot 7H_2O$ (магній сульфат)
+        🧂 **{kh_from_caco3:.3f} г** CaCO₃ (кальцій карбонат)
+        🧂 **{cacl2_g:.3f} г** CaCl₂·2H₂O (кальцій хлорид)
+        🧂 **{mgso4_g:.3f} г** MgSO₄·7H₂O (магній сульфат)
         """)
-        
-        # Прогноз параметрів
-        predicted_ca_mgl = (ca_from_caco3_g + remaining_ca_g) * 1000 / c_vol if c_vol > 0 else 0
-        predicted_mg_mgl = total_mg_g * 1000 / c_vol if c_vol > 0 else 0
-        predicted_gh = (predicted_ca_mgl / 5.1) + (predicted_mg_mgl / 4.3) if c_vol > 0 else 0
-        
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            st.metric("Прогнозований GH", f"{predicted_gh:.1f}°dH", delta=f"ціль {target_gh:.1f}")
-        with col_p2:
-            st.metric("Прогнозований KH", f"{target_kh:.1f}°dH")
 
 # ======================== 2. КАЛЬКУЛЯТОР СПОЖИВАННЯ ========================
 st.header("📊 2. Калькулятор реального споживання")
 consumption_results = {}
 
 with st.expander("Аналіз минулого періоду"):
-    st.caption("Введіть дані двох тестів (початок і зараз) та скільки добрив вносили")
-    
     t1, t2, t3 = st.tabs(["NO3", "PO4", "K"])
     
     def calc_real_cons(tab, name, key_p, is_po4=False):
@@ -278,17 +251,6 @@ with col3:
     daily_no3 = st.number_input("Споживання NO3 (мг/л/день)", value=float(default_no3_cons), step=0.1, format="%.1f")
     daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=float(default_po4_cons), step=0.05, format="%.2f")
     daily_k = st.number_input("Споживання K (мг/л/день)", value=float(default_k_cons), step=0.1, format="%.1f")
-    
-    # Очищаємо старі попередження перед новою перевіркою
-    if st.session_state.get('last_params'):
-        # Перевіряємо тільки якщо параметри змінилися
-        if (st.session_state.last_params.get('no3') != no3_now or 
-            st.session_state.last_params.get('po4') != po4_now):
-            # Очищаємо тільки старі попередження про різкі зміни
-            st.session_state.alerts = [a for a in st.session_state.alerts 
-                                       if not a.startswith("⚠️ Різка зміна")]
-            check_shock(st.session_state.last_params.get('no3'), no3_now, 'NO3')
-            check_shock(st.session_state.last_params.get('po4'), po4_now, 'PO4')
 
 # ======================== 4. ПІДМІНА ВОДИ ========================
 st.divider()
@@ -362,7 +324,6 @@ final_tds = after_tds + (add_no3_daily + add_po4_daily + add_k_daily) * 0.5
 # ======================== 6. ПРОГНОЗ ========================
 st.header(f"📈 6. Динамічний прогноз на {days} днів")
 
-# Розрахунок стабільності з перевіркою на нуль
 if final_po4 > 0 and custom_redfield > 0:
     current_ratio = final_no3 / final_po4
     stability = 1 / (1 + abs((current_ratio - custom_redfield) / custom_redfield))
@@ -388,79 +349,8 @@ for d in range(days + 1):
 df_forecast = pd.DataFrame(forecast).set_index("День")
 st.line_chart(df_forecast)
 
-# ======================== 7. ШІ АНАЛІЗ ТА РЕКОМЕНДАЦІЇ ========================
-st.header("🤖 7. Штучний Інтелект — Аналіз та рекомендації")
-
-# Оцінка ризику водоростей
-algae = algae_risk(final_no3, final_po4)
-st.info(f"**🌊 Ризик водоростей:** {algae}")
-
-# Рекомендація по світлу
-light = light_recommendation(co2_val, final_no3, final_po4)
-st.info(f"**💡 Рекомендація по світлу:** {light}")
-
-# NPK співвідношення
-npk_ratio = calculate_npk_ratio(final_no3, final_po4, final_k)
-st.caption(f"**📊 Співвідношення NPK:** {npk_ratio[0]:.1f} : {npk_ratio[1]:.1f} : {npk_ratio[2]:.1f}")
-
-# Компактний блок рекомендацій замість роздутих попереджень
-st.subheader("💡 Поточні рекомендації")
-
-recommendations = []
-
-# Рекомендації на основі параметрів
-if final_no3 < 5:
-    recommendations.append("🔴 **Дуже низький NO3** (<5 мг/л) — рослини голодують, терміново збільште дозу N")
-elif final_no3 < 10:
-    recommendations.append("🟡 **Низький NO3** — рослини можуть сповільнити ріст, збільште N на 20%")
-elif final_no3 > 40:
-    recommendations.append("🔴 **Високий NO3** (>40 мг/л) — ризик для риб, зменште N добрива")
-elif final_no3 > 30:
-    recommendations.append("🟡 **Підвищений NO3** — можливе стимулювання водоростей, зменште N на 20%")
-
-if final_po4 < 0.2:
-    recommendations.append("🔴 **Дуже низький PO4** (<0.2 мг/л) — дефіцит фосфору, збільште дозу P")
-elif final_po4 < 0.5:
-    recommendations.append("🟡 **Низький PO4** — фосфор може бути лімітуючим фактором")
-elif final_po4 > 2.5:
-    recommendations.append("🔴 **Високий PO4** (>2.5 мг/л) — високий ризик водоростей")
-elif final_po4 > 1.5:
-    recommendations.append("🟡 **Підвищений PO4** — слідкуйте за появою водоростей")
-
-if final_k < k_opt_range['opt_low']:
-    recommendations.append(f"🔴 **Дефіцит K** ({final_k:.1f} < {k_opt_range['opt_low']:.0f} мг/л) — додайте K добрива")
-elif final_k > k_opt_range['opt_high']:
-    recommendations.append(f"🟡 **Надлишок K** — можливе блокування Ca/Mg")
-
-if co2_val < co2_min_opt:
-    recommendations.append(f"🔴 **Дефіцит CO₂** ({co2_val:.1f} < {co2_min_opt} мг/л) — збільште подачу CO₂")
-elif co2_val > co2_max_opt:
-    recommendations.append(f"🔴 **Надлишок CO₂** ({co2_val:.1f} > {co2_max_opt} мг/л) — ризик для риб")
-
-if redfield_status == "дефіцит N":
-    recommendations.append(f"🟡 **Дисбаланс N:P** — дефіцит азоту (N:P = {redfield_ratio:.1f}:1)")
-elif redfield_status == "дефіцит P":
-    recommendations.append(f"🟡 **Дисбаланс N:P** — дефіцит фосфору (N:P = {redfield_ratio:.1f}:1)")
-
-# Виводимо рекомендації (максимум 5 найважливіших)
-if recommendations:
-    for rec in recommendations[:5]:
-        st.warning(rec)
-else:
-    st.success("✅ Всі параметри в оптимальному діапазоні! Так тримати.")
-
-# Окремий розділ з активними попередженнями (тільки свіжі)
-if st.session_state.alerts:
-    with st.expander("⚠️ Історія різких змін", expanded=False):
-        # Показуємо тільки унікальні попередження за останній день
-        unique_alerts = list(set(st.session_state.alerts[-5:]))
-        for alert in unique_alerts:
-            st.warning(alert)
-
-
-            
-# ======================== 8. K/GH АНАЛІЗ ========================
-st.header("🧂 8. K/GH співвідношення")
+# ======================== 7. K/GH АНАЛІЗ (ПЕРЕМІЩЕНО СЮДИ) ========================
+st.header("🧂 7. K/GH співвідношення")
 
 k_opt_range = get_optimal_k_range(gh)
 k_gh_ratio = final_k / gh if gh > 0 else 0
@@ -495,6 +385,60 @@ with col_k3:
         st.warning(f"🟡 Надлишок K — знизьте на {final_k - k_opt_range['opt_high']:.1f} мг/л")
     else:
         st.error(f"🔴 КРИТИЧНИЙ НАДЛИШОК K — терміново знизьте")
+
+# ======================== 8. ШІ АНАЛІЗ ТА РЕКОМЕНДАЦІЇ ========================
+st.header("🤖 8. Штучний Інтелект — Аналіз та рекомендації")
+
+# Оцінка ризику водоростей
+algae = algae_risk(final_no3, final_po4)
+st.info(f"**🌊 Ризик водоростей:** {algae}")
+
+# Рекомендація по світлу
+light = light_recommendation(co2_val, final_no3, final_po4)
+st.info(f"**💡 Рекомендація по світлу:** {light}")
+
+# NPK співвідношення
+npk_ratio = calculate_npk_ratio(final_no3, final_po4, final_k)
+st.caption(f"**📊 Співвідношення NPK:** {npk_ratio[0]:.1f} : {npk_ratio[1]:.1f} : {npk_ratio[2]:.1f}")
+
+# Компактний блок рекомендацій
+st.subheader("💡 Поточні рекомендації")
+
+recommendations = []
+
+if final_no3 < 5:
+    recommendations.append("🔴 Дуже низький NO3 (<5 мг/л) — терміново збільште дозу N")
+elif final_no3 < 10:
+    recommendations.append("🟡 Низький NO3 — збільште N на 20%")
+elif final_no3 > 40:
+    recommendations.append("🔴 Високий NO3 (>40 мг/л) — зменште N добрива")
+elif final_no3 > 30:
+    recommendations.append("🟡 Підвищений NO3 — зменште N на 20%")
+
+if final_po4 < 0.2:
+    recommendations.append("🔴 Дуже низький PO4 (<0.2 мг/л) — збільште дозу P")
+elif final_po4 < 0.5:
+    recommendations.append("🟡 Низький PO4 — фосфор може бути лімітуючим фактором")
+elif final_po4 > 2.5:
+    recommendations.append("🔴 Високий PO4 (>2.5 мг/л) — високий ризик водоростей")
+elif final_po4 > 1.5:
+    recommendations.append("🟡 Підвищений PO4 — слідкуйте за водоростями")
+
+if final_k < k_opt_range['opt_low']:
+    recommendations.append(f"🔴 Дефіцит K ({final_k:.1f} < {k_opt_range['opt_low']:.0f} мг/л) — додайте K")
+elif final_k > k_opt_range['opt_high']:
+    recommendations.append(f"🟡 Надлишок K — можливе блокування Ca/Mg")
+
+if co2_val < co2_min_opt:
+    recommendations.append(f"🔴 Дефіцит CO₂ ({co2_val:.1f} < {co2_min_opt} мг/л) — збільште подачу")
+elif co2_val > co2_max_opt:
+    recommendations.append(f"🔴 Надлишок CO₂ ({co2_val:.1f} > {co2_max_opt} мг/л) — ризик для риб")
+
+if recommendations:
+    for rec in recommendations[:5]:
+        st.warning(rec)
+else:
+    st.success("✅ Всі параметри в оптимальному діапазоні! Так тримати.")
 
 # ======================== 9. ПЛАН КОРЕКЦІЇ ========================
 st.divider()
@@ -552,18 +496,12 @@ col_rec1, col_rec2, col_rec3 = st.columns(3)
 
 with col_rec1:
     st.metric("N доза", f"{current_dose_n_ml:.1f} → {new_dose_n:.1f} мл/день", delta=action_n)
-    if delta_no3 > 0:
-        st.caption(f"📉 Дефіцит {delta_no3:.1f} мг/л за {days} днів")
 
 with col_rec2:
     st.metric("P доза", f"{current_dose_p_ml:.2f} → {new_dose_p:.2f} мл/день", delta=action_p)
-    if delta_po4 > 0:
-        st.caption(f"📉 Дефіцит {delta_po4:.2f} мг/л за {days} днів")
 
 with col_rec3:
     st.metric("K доза", f"{current_dose_k_ml:.1f} → {new_dose_k:.1f} мл/день", delta=action_k)
-    if delta_k > 0:
-        st.caption(f"📉 Дефіцит {delta_k:.1f} мг/л за {days} днів")
 
 st.caption("💡 Змінюйте дозування поступово, не більше ніж на 20% за день")
 
@@ -608,7 +546,6 @@ with col_summary2:
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
 
-# Збереження поточних параметрів в історію
 current_params = {
     'no3': final_no3, 'po4': final_po4, 'k': final_k,
     'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
@@ -616,7 +553,7 @@ current_params = {
 save_to_history(current_params)
 st.session_state.last_params = current_params
 
-report = f"""=== TOXICODE AQUARIUM V10.1 REPORT ===
+report = f"""=== TOXICODE AQUARIUM V10.3 REPORT ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ОСНОВНІ ПАРАМЕТРИ
@@ -660,13 +597,11 @@ with st.expander("📜 Історія змін параметрів"):
     with col_history1:
         if st.session_state.history:
             df_history = pd.DataFrame(st.session_state.history)
-            # Показуємо тільки дату (без секунд)
             df_history['дата'] = pd.to_datetime(df_history['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
             display_df = df_history[['дата', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
             display_df.columns = ['Дата', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
             st.dataframe(display_df, use_container_width=True)
             
-            # Графік динаміки NO3
             if len(df_history) > 1:
                 df_history_numeric = df_history[['timestamp', 'no3']].copy()
                 df_history_numeric['timestamp'] = pd.to_datetime(df_history_numeric['timestamp'])
@@ -681,10 +616,8 @@ with st.expander("📜 Історія змін параметрів"):
         - Зберігайте показники **1 раз на день** в один і той самий час
         - Найкраще робити це **перед ввімкненням CO₂**
         - Це допоможе відстежувати довгострокову динаміку
-        - При зміні системи (нові добрива, світло) зберігайте частіше
         """)
         
-        # Кнопка очищення історії
         if st.button("🗑️ Очистити історію", key="clear_history"):
             st.session_state.history = []
             st.session_state.alerts = []
@@ -710,4 +643,4 @@ with st.expander("🛡️ Валідація та безпека"):
     if final_k > k_opt_range['max']:
         st.warning("⚠️ K вище максимуму — ризик блокування Ca/Mg")
 
-st.caption("⚡ Toxicode V10.1 | Штучний Інтелект | Історія параметрів | Прогноз водоростей")
+st.caption("⚡ Toxicode V10.3 | Штучний Інтелект | Історія параметрів | Прогноз водоростей")
