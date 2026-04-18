@@ -403,12 +403,60 @@ st.info(f"**💡 Рекомендація по світлу:** {light}")
 npk_ratio = calculate_npk_ratio(final_no3, final_po4, final_k)
 st.caption(f"**📊 Співвідношення NPK:** {npk_ratio[0]:.1f} : {npk_ratio[1]:.1f} : {npk_ratio[2]:.1f}")
 
-# Попередження
-if st.session_state.alerts:
-    with st.expander("⚠️ Активні попередження", expanded=True):
-        for alert in st.session_state.alerts[-5:]:
-            st.warning(alert)
+# Компактний блок рекомендацій замість роздутих попереджень
+st.subheader("💡 Поточні рекомендації")
 
+recommendations = []
+
+# Рекомендації на основі параметрів
+if final_no3 < 5:
+    recommendations.append("🔴 **Дуже низький NO3** (<5 мг/л) — рослини голодують, терміново збільште дозу N")
+elif final_no3 < 10:
+    recommendations.append("🟡 **Низький NO3** — рослини можуть сповільнити ріст, збільште N на 20%")
+elif final_no3 > 40:
+    recommendations.append("🔴 **Високий NO3** (>40 мг/л) — ризик для риб, зменште N добрива")
+elif final_no3 > 30:
+    recommendations.append("🟡 **Підвищений NO3** — можливе стимулювання водоростей, зменште N на 20%")
+
+if final_po4 < 0.2:
+    recommendations.append("🔴 **Дуже низький PO4** (<0.2 мг/л) — дефіцит фосфору, збільште дозу P")
+elif final_po4 < 0.5:
+    recommendations.append("🟡 **Низький PO4** — фосфор може бути лімітуючим фактором")
+elif final_po4 > 2.5:
+    recommendations.append("🔴 **Високий PO4** (>2.5 мг/л) — високий ризик водоростей")
+elif final_po4 > 1.5:
+    recommendations.append("🟡 **Підвищений PO4** — слідкуйте за появою водоростей")
+
+if final_k < k_opt_range['opt_low']:
+    recommendations.append(f"🔴 **Дефіцит K** ({final_k:.1f} < {k_opt_range['opt_low']:.0f} мг/л) — додайте K добрива")
+elif final_k > k_opt_range['opt_high']:
+    recommendations.append(f"🟡 **Надлишок K** — можливе блокування Ca/Mg")
+
+if co2_val < co2_min_opt:
+    recommendations.append(f"🔴 **Дефіцит CO₂** ({co2_val:.1f} < {co2_min_opt} мг/л) — збільште подачу CO₂")
+elif co2_val > co2_max_opt:
+    recommendations.append(f"🔴 **Надлишок CO₂** ({co2_val:.1f} > {co2_max_opt} мг/л) — ризик для риб")
+
+if redfield_status == "дефіцит N":
+    recommendations.append(f"🟡 **Дисбаланс N:P** — дефіцит азоту (N:P = {redfield_ratio:.1f}:1)")
+elif redfield_status == "дефіцит P":
+    recommendations.append(f"🟡 **Дисбаланс N:P** — дефіцит фосфору (N:P = {redfield_ratio:.1f}:1)")
+
+# Виводимо рекомендації (максимум 5 найважливіших)
+if recommendations:
+    for rec in recommendations[:5]:
+        st.warning(rec)
+else:
+    st.success("✅ Всі параметри в оптимальному діапазоні! Так тримати.")
+
+# Окремий розділ з активними попередженнями (тільки свіжі)
+if st.session_state.alerts:
+    with st.expander("⚠️ Історія різких змін", expanded=False):
+        # Показуємо тільки унікальні попередження за останній день
+        unique_alerts = list(set(st.session_state.alerts[-5:]))
+        for alert in unique_alerts:
+            st.warning(alert)
+            
 # ======================== 8. K/GH АНАЛІЗ ========================
 st.header("🧂 8. K/GH співвідношення")
 
