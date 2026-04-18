@@ -597,18 +597,42 @@ st.code(report, language="text")
 
 # ======================== 12. ІСТОРІЯ ПАРАМЕТРІВ ========================
 with st.expander("📜 Історія змін параметрів"):
-    if st.session_state.history:
-        df_history = pd.DataFrame(st.session_state.history)
-        st.dataframe(df_history.tail(10), use_container_width=True)
+    st.caption("Зберігайте показники вручну для відстеження динаміки (рекомендується 1 раз на день)")
+    
+    col_history1, col_history2 = st.columns([2, 1])
+    
+    with col_history1:
+        if st.session_state.history:
+            df_history = pd.DataFrame(st.session_state.history)
+            # Показуємо тільки дату (без секунд)
+            df_history['дата'] = pd.to_datetime(df_history['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+            display_df = df_history[['дата', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
+            display_df.columns = ['Дата', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Графік динаміки NO3
+            if len(df_history) > 1:
+                df_history_numeric = df_history[['timestamp', 'no3']].copy()
+                df_history_numeric['timestamp'] = pd.to_datetime(df_history_numeric['timestamp'])
+                df_history_numeric = df_history_numeric.set_index('timestamp')
+                st.line_chart(df_history_numeric)
+        else:
+            st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' в бічній панелі.")
+    
+    with col_history2:
+        st.markdown("**💡 Порада:**")
+        st.caption("""
+        - Зберігайте показники **1 раз на день** в один і той самий час
+        - Найкраще робити це **перед ввімкненням CO₂**
+        - Це допоможе відстежувати довгострокову динаміку
+        - При зміні системи (нові добрива, світло) зберігайте частіше
+        """)
         
-        # Простий графік через st.line_chart замість plotly
-        if len(df_history) > 1:
-            df_history_numeric = df_history[['timestamp', 'no3']].copy()
-            df_history_numeric['timestamp'] = pd.to_datetime(df_history_numeric['timestamp'])
-            df_history_numeric = df_history_numeric.set_index('timestamp')
-            st.line_chart(df_history_numeric)
-    else:
-        st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' в бічній панелі.")
+        # Кнопка очищення історії
+        if st.button("🗑️ Очистити історію", key="clear_history"):
+            st.session_state.history = []
+            st.session_state.alerts = []
+            st.rerun()
 
 # ======================== 13. ВАЛІДАЦІЯ ========================
 with st.expander("🛡️ Валідація та безпека"):
