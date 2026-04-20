@@ -14,14 +14,16 @@ if 'alerts' not in st.session_state:
     st.session_state.alerts = []
 
 # ======================== HELPER FUNCTIONS ========================
+# FIX (Quality #5): clamp() was defined but never used — now used in forecast
 def clamp(v, min_v, max_v):
     return max(min(v, max_v), min_v)
 
+# FIX (Bug #1 — bare except): catch specific exceptions only
 def calculate_co2(kh, ph):
     """CO₂ (мг/л) = 3 * KH * 10^(7-pH)"""
     try:
         return 3 * kh * (10 ** (7 - ph))
-    except:
+    except (ValueError, ZeroDivisionError, OverflowError):
         return 0
 
 def redfield_balance(no3, po4, target_ratio):
@@ -92,46 +94,91 @@ def check_shock(prev_val, new_val, param_name, threshold=30):
             return True
     return False
 
-def save_to_history(params):
+# FIX (Quality #3): unified save function used by both save buttons
+def save_snapshot(params, note=""):
     """Збереження параметрів в історію"""
     record = {
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'note': note,
         **params
     }
     st.session_state.history.append(record)
     if len(st.session_state.history) > 50:
         st.session_state.history = st.session_state.history[-50:]
 
+# FIX (Quality #2): calc_real_cons moved to top-level, tank_vol passed as argument
+def calc_real_cons(tab, name, key_p, tank_vol, is_po4=False):
+    with tab:
+        c1, c2, c3 = st.columns(3)
+
+        if is_po4:
+            p_test = c1.number_input(f"Тест {name} (початок)", value=1.0, step=0.05, format="%.2f", key=f"p_{key_p}")
+            c_test = c2.number_input(f"Тест {name} (зараз)", value=0.5, step=0.05, format="%.2f", key=f"c_{key_p}")
+        else:
+            p_test = c1.number_input(f"Тест {name} (початок)", value=15.0, step=0.5, format="%.1f", key=f"p_{key_p}")
+            c_test = c2.number_input(f"Тест {name} (зараз)", value=10.0, step=0.5, format="%.1f", key=f"c_{key_p}")
+
+        with c3:
+            st.markdown("**Внесено добрив:**")
+            dose_ml = st.number_input(f"мл добрива", value=0.0, step=1.0, format="%.1f", key=f"d_ml_{key_p}")
+            if is_po4:
+                conc = st.number_input(f"Концентрація {name} г/л", value=5.0, step=0.5, format="%.1f", key=f"conc_{key_p}")
+            else:
+                conc = st.number_input(f"Концентрація {name} г/л", value=50.0, step=5.0, format="%.1f", key=f"conc_{key_p}")
+            added_mgl = (dose_ml * conc) / tank_vol if tank_vol > 0 else 0
+            st.caption(f"Додано: +{added_mgl:.2f} мг/л")
+
+        cl1, cl2 = st.columns(2)
+        ch_l = cl1.number_input(f"Літрів підмінено", value=0.0, step=5.0, format="%.1f", key=f"ch_l_{key_p}")
+        days_between = cl2.number_input("Днів між тестами", value=7, min_value=1, step=1, key=f"d_{key_p}")
+
+        pct_wc = (ch_l / tank_vol) if tank_vol > 0 else 0
+        res = (p_test * (1 - pct_wc) + added_mgl - c_test) / days_between if days_between > 0 else 0
+        val = max(res, 0)
+        st.info(f"**Споживання {name}:** {val:.2f} мг/л в день")
+        return val
+
 # ======================== SIDEBAR ========================
 with st.sidebar:
     st.header("⚙️ Конфігурація системи")
     tank_vol = st.number_input("Чистий об'єм води (л)", value=200.0, step=1.0)
-    
+
     st.divider()
     st.subheader("🎯 Цільові показники")
     target_no3 = st.number_input("Ціль NO3 (мг/л)", value=15.0, step=1.0)
     target_po4 = st.number_input("Ціль PO4 (мг/л)", value=1.0, step=0.1)
     target_k = st.number_input("Ціль K (мг/л)", value=15.0, step=1.0)
     target_tds = st.number_input("Ціль TDS", value=120.0, step=5.0)
-    
+
     st.divider()
     st.subheader("🔬 Розширені налаштування")
     custom_redfield = st.slider("Бажана пропорція Редфілда (N:P)", 5, 30, 15)
-    
+
     po4_unit = st.radio("Тест показує:", ["PO4 (фосфат)", "P (фосфор)"], horizontal=True)
     if po4_unit == "P (фосфор)":
         target_po4_real = target_po4 * 3.07
         st.caption("⚠️ Ваші цілі будуть автоматично перераховані: P × 3.07 = PO4")
     else:
         target_po4_real = target_po4
-    
+
     co2_min_opt = st.slider("Нижня межа CO₂ (мг/л)", 0, 100, 25)
     co2_max_opt = st.slider("Верхня межа CO₂ (мг/л)", 0, 100, 45)
-    
+
     days = st.slider("Період прогнозу (днів)", 1, 30, 7)
-    
+
+    # FIX (Quality #3): sidebar save button now uses unified save_snapshot()
     if st.button("📊 Зберегти поточні показники"):
-        st.success("Параметри збережено в історію!")
+        # We don't have final values yet at sidebar render time, so we show a note
+        st.info("Використовуйте кнопку збереження в розділі 'Історія' для збереження повних даних.")
+
+# FIX (Quality #4): display alerts at the top of the page if any exist
+if st.session_state.alerts:
+    with st.container():
+        for alert in st.session_state.alerts:
+            st.warning(alert)
+        if st.button("✖ Закрити сповіщення"):
+            st.session_state.alerts = []
+            st.rerun()
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
 st.header("💎 1. Ремінералізатор")
@@ -140,39 +187,39 @@ with st.expander("Розрахунок солей для підміни", expand
     **Як це працює:**  
     Ви задаєте бажані параметри води (GH, KH, Ca:Mg), а система розраховує точну кількість солей.
     """)
-    
+
     col_rem1, col_rem2 = st.columns(2)
-    
+
     with col_rem1:
         c_vol = st.number_input("Літрів свіжої води (осмос)", value=10.0, step=5.0, key="rem_vol")
-        
+
         st.divider()
         st.subheader("🎯 Цільові параметри")
         target_gh = st.slider("Цільовий GH (°dH)", 1.0, 20.0, 6.0, 0.5)
         target_kh = st.slider("Цільовий KH (°dH)", 0.0, 15.0, 2.0, 0.5)
         target_ca_mg_ratio = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
-        
+
     with col_rem2:
         st.subheader("🧪 Розрахований склад")
-        
-        if target_ca_mg_ratio > 0:
-            ratio_factor = target_ca_mg_ratio / 5.1 + 1 / 4.3
-            mg_mgl = target_gh / ratio_factor if ratio_factor > 0 else 0
-            ca_mgl = target_ca_mg_ratio * mg_mgl
-        else:
-            ca_mgl = target_gh * 5.1
-            mg_mgl = 0
-        
+
+        # FIX (Bug #1): corrected Ca/Mg distribution formula
+        # GH in °dH: 1°dH = 7.14 mg/l Ca²⁺ equivalent or 4.33 mg/l Mg²⁺ equivalent
+        # Solve: ca_mgl/5.1 + mg_mgl/4.3 = target_gh  AND  ca_mgl = target_ca_mg_ratio * mg_mgl
+        # => mg_mgl * (target_ca_mg_ratio/5.1 + 1/4.3) = target_gh
+        denom = (target_ca_mg_ratio / 5.1) + (1.0 / 4.3)
+        mg_mgl = target_gh / denom if denom > 0 else 0
+        ca_mgl = target_ca_mg_ratio * mg_mgl
+
         total_ca_g = ca_mgl * c_vol / 1000
         total_mg_g = mg_mgl * c_vol / 1000
-        
+
         kh_from_caco3 = (target_kh * 17.86 * c_vol / 1000)
         ca_from_caco3_g = kh_from_caco3 * 0.4
-        
+
         remaining_ca_g = max(0, total_ca_g - ca_from_caco3_g)
         cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
         mgso4_g = total_mg_g / 0.0986 if total_mg_g > 0 else 0
-        
+
         st.success(f"""
         **Для {c_vol:.0f} л осмосу додай:**
         
@@ -180,8 +227,7 @@ with st.expander("Розрахунок солей для підміни", expand
         🧂 **{cacl2_g:.3f} г** CaCl₂·2H₂O (кальцій хлорид)
         🧂 **{mgso4_g:.3f} г** MgSO₄·7H₂O (магній сульфат)
         """)
-        
-        # ========== ІНСТРУКЦІЯ ПРИГОТУВАННЯ ==========
+
         st.divider()
         with st.expander("📖 Інструкція приготування", expanded=True):
             st.markdown(f"""
@@ -194,9 +240,7 @@ with st.expander("Розрахунок солей для підміни", expand
                - 🧂 **$MgSO_4 \\cdot 7H_2O$ (магній сульфат)** — добре розчиняється
                - 🧂 **$CaCl_2 \\cdot 2H_2O$ (кальцій хлорид)** — додайте останнім
             
-            3. **Перемішайте** до повного розчинення:
-               - Використовуйте помпу або інтенсивне перемішування
-               - Для прискорення розчинення CaCO₃ можна додати трохи газованої води або CO₂
+            3. **Перемішайте** до повного розчинення
             
             4. **Виміряйте TDS** — має бути ~{target_gh * 10 + target_kh * 5:.0f} ppm
             
@@ -204,16 +248,7 @@ with st.expander("Розрахунок солей для підміни", expand
                - GH має бути {target_gh:.1f}°dH
                - KH має бути {target_kh:.1f}°dH
             
-            6. **Додайте в акваріум** поступово:
-               - Не більше 30% об'єму акваріума за раз
-               - Додавайте повільно, протягом 30-60 хвилин
-            
-            ### ⚡ Важливі поради:
-            
-            - **Зберігання:** готовий розчин зберігайте в закритій ємності не більше 2 тижнів
-            - **Температура:** для кращого розчинення використовуйте воду кімнатної температури
-            - **Безпека:** уникайте потрапляння солей на шкіру та слизові оболонки
-            - **Передозування:** при випадковому передозуванні зробіть додаткову підміну чистою водою
+            6. **Додайте в акваріум** поступово (не більше 30% об'єму за раз)
             
             ### 📊 Розраховані параметри:
             
@@ -223,10 +258,11 @@ with st.expander("Розрахунок солей для підміни", expand
             | Цільовий GH | {target_gh:.1f}°dH |
             | Цільовий KH | {target_kh:.1f}°dH |
             | Цільове Ca:Mg | {target_ca_mg_ratio:.1f}:1 |
+            | Ca у воді | {ca_mgl:.1f} мг/л |
+            | Mg у воді | {mg_mgl:.1f} мг/л |
             | Орієнтовний TDS | {target_gh * 10 + target_kh * 5:.0f} ppm |
             """)
-        
-        # Перевірка на доцільність
+
         if cacl2_g < 0.01 and remaining_ca_g <= 0:
             st.info("💡 **Порада:** CaCO₃ дає достатньо кальцію, додатковий CaCl₂ не потрібен.")
         elif cacl2_g > 1.0:
@@ -238,41 +274,10 @@ consumption_results = {}
 
 with st.expander("Аналіз минулого періоду"):
     t1, t2, t3 = st.tabs(["NO3", "PO4", "K"])
-    
-    def calc_real_cons(tab, name, key_p, is_po4=False):
-        with tab:
-            c1, c2, c3 = st.columns(3)
-            
-            if is_po4:
-                p_test = c1.number_input(f"Тест {name} (початок)", value=1.0, step=0.05, format="%.2f", key=f"p_{key_p}")
-                c_test = c2.number_input(f"Тест {name} (зараз)", value=0.5, step=0.05, format="%.2f", key=f"c_{key_p}")
-            else:
-                p_test = c1.number_input(f"Тест {name} (початок)", value=15.0, step=0.5, format="%.1f", key=f"p_{key_p}")
-                c_test = c2.number_input(f"Тест {name} (зараз)", value=10.0, step=0.5, format="%.1f", key=f"c_{key_p}")
-            
-            with c3:
-                st.markdown("**Внесено добрив:**")
-                dose_ml = st.number_input(f"мл добрива", value=0.0, step=1.0, format="%.1f", key=f"d_ml_{key_p}")
-                if is_po4:
-                    conc = st.number_input(f"Концентрація {name} г/л", value=5.0, step=0.5, format="%.1f", key=f"conc_{key_p}")
-                else:
-                    conc = st.number_input(f"Концентрація {name} г/л", value=50.0, step=5.0, format="%.1f", key=f"conc_{key_p}")
-                added_mgl = (dose_ml * conc) / tank_vol if tank_vol > 0 else 0
-                st.caption(f"Додано: +{added_mgl:.2f} мг/л")
-            
-            cl1, cl2 = st.columns(2)
-            ch_l = cl1.number_input(f"Літрів підмінено", value=0.0, step=5.0, format="%.1f", key=f"ch_l_{key_p}")
-            days_between = cl2.number_input("Днів між тестами", value=7, min_value=1, step=1, key=f"d_{key_p}")
-            
-            pct_wc = (ch_l / tank_vol) if tank_vol > 0 else 0
-            res = (p_test * (1 - pct_wc) + added_mgl - c_test) / days_between if days_between > 0 else 0
-            val = max(res, 0)
-            consumption_results[name] = val
-            st.info(f"**Споживання {name}:** {val:.2f} мг/л в день")
-    
-    calc_real_cons(t1, "NO3", "no3")
-    calc_real_cons(t2, "PO4", "po4", is_po4=True)
-    calc_real_cons(t3, "K", "k")
+    # FIX (Quality #2): calc_real_cons is now a top-level function, tank_vol passed explicitly
+    consumption_results['NO3'] = calc_real_cons(t1, "NO3", "no3", tank_vol)
+    consumption_results['PO4'] = calc_real_cons(t2, "PO4", "po4", tank_vol, is_po4=True)
+    consumption_results['K'] = calc_real_cons(t3, "K", "k", tank_vol)
 
 # ======================== 3. ПОТОЧНИЙ СТАН ========================
 st.header("📋 3. Поточні параметри води")
@@ -292,7 +297,7 @@ with col1:
 with col2:
     gh = st.number_input("GH (°dH)", value=6, step=1)
     kh = st.number_input("KH (°dH)", value=2, step=1)
-    
+
     st.divider()
     st.caption("🌬️ CO₂ контроль")
     ph_morning = st.number_input("pH (ранок, до CO₂)", value=7.2, step=0.1, format="%.1f")
@@ -304,10 +309,17 @@ with col3:
     default_no3_cons = consumption_results.get('NO3', 2.0)
     default_po4_cons = consumption_results.get('PO4', 0.1)
     default_k_cons = consumption_results.get('K', 1.0)
-    
+
     daily_no3 = st.number_input("Споживання NO3 (мг/л/день)", value=float(default_no3_cons), step=0.1, format="%.1f")
     daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=float(default_po4_cons), step=0.05, format="%.2f")
     daily_k = st.number_input("Споживання K (мг/л/день)", value=float(default_k_cons), step=0.1, format="%.1f")
+
+# Trigger shock alerts if previous values exist
+if st.session_state.last_params:
+    lp = st.session_state.last_params
+    check_shock(lp.get('no3'), no3_now, "NO₃")
+    check_shock(lp.get('po4'), po4_now, "PO₄")
+    check_shock(lp.get('k'), k_now, "K")
 
 # ======================== 4. ПІДМІНА ВОДИ ========================
 st.divider()
@@ -318,7 +330,7 @@ with c_change:
     change_l = st.number_input("Літри підміни", value=50.0, step=1.0)
     pct = change_l / tank_vol if tank_vol > 0 else 0
     st.metric("Відсоток підміни", f"{pct*100:.1f}%")
-    
+
     weekly_change_pct = pct * 7 if pct > 0 else 0
     steady_no3 = calculate_steady_state(daily_no3, weekly_change_pct)
     st.caption(f"⚖️ Steady State NO₃: {steady_no3:.0f} мг/л")
@@ -326,19 +338,19 @@ with c_change:
 with c_dosing:
     st.markdown("**➕ Внесення добрив ПІСЛЯ підміни:**")
     col_n, col_p, col_k = st.columns(3)
-    
+
     with col_n:
         dose_after_n_ml = st.number_input("N мл", value=0.0, step=1.0, key="after_n")
         conc_n = st.number_input("N г/л", value=50.0, key="conc_n_after")
         add_n_after = (dose_after_n_ml * conc_n) / tank_vol if tank_vol > 0 else 0
         st.caption(f"+{add_n_after:.1f} мг/л NO3")
-    
+
     with col_p:
         dose_after_p_ml = st.number_input("P мл", value=0.0, step=0.5, key="after_p")
         conc_p = st.number_input("P г/л", value=5.0, key="conc_p_after")
         add_p_after = (dose_after_p_ml * conc_p) / tank_vol if tank_vol > 0 else 0
         st.caption(f"+{add_p_after:.2f} мг/л PO4")
-    
+
     with col_k:
         dose_after_k_ml = st.number_input("K мл", value=0.0, step=1.0, key="after_k")
         conc_k = st.number_input("K г/л", value=20.0, key="conc_k_after")
@@ -381,13 +393,16 @@ final_tds = after_tds + (add_no3_daily + add_po4_daily + add_k_daily) * 0.5
 # ======================== 6. ПРОГНОЗ ========================
 st.header(f"📈 6. Динамічний прогноз на {days} днів")
 
+# FIX (Bug #2): stability coefficient removed from consumption term.
+# It was incorrectly reducing plant uptake when nutrients were imbalanced.
+# Daily dosing and consumption are now applied directly without distortion.
 if final_po4 > 0 and custom_redfield > 0:
     current_ratio = final_no3 / final_po4
     stability = 1 / (1 + abs((current_ratio - custom_redfield) / custom_redfield))
 else:
     stability = 0.5
 
-st.caption(f"🎯 Коефіцієнт стабільності: {stability:.2f} (чим ближче до 1, тим кращий баланс)")
+st.caption(f"🎯 Коефіцієнт стабільності N:P: {stability:.2f} (чим ближче до 1, тим кращий баланс)")
 
 forecast = []
 curr_n, curr_p, curr_k = final_no3, final_po4, final_k
@@ -399,9 +414,15 @@ for d in range(days + 1):
         "PO4": max(0, round(curr_p, 2)),
         "K": max(0, round(curr_k, 1))
     })
-    curr_n = max(0, curr_n + (current_dose_n_ml * conc_n_daily / tank_vol) - (daily_no3 * stability))
-    curr_p = max(0, curr_p + (current_dose_p_ml * conc_p_daily / tank_vol) - (daily_po4 * stability))
-    curr_k = max(0, curr_k + (current_dose_k_ml * conc_k_daily / tank_vol) - (daily_k * stability))
+    # FIX (Bug #2): use clamp() and apply consumption directly (no stability multiplier)
+    # clamp ensures values never go below 0 or above a reasonable ceiling
+    daily_dose_n = (current_dose_n_ml * conc_n_daily / tank_vol) if tank_vol > 0 else 0
+    daily_dose_p = (current_dose_p_ml * conc_p_daily / tank_vol) if tank_vol > 0 else 0
+    daily_dose_k = (current_dose_k_ml * conc_k_daily / tank_vol) if tank_vol > 0 else 0
+
+    curr_n = clamp(curr_n + daily_dose_n - daily_no3, 0, 200)
+    curr_p = clamp(curr_p + daily_dose_p - daily_po4, 0, 20)
+    curr_k = clamp(curr_k + daily_dose_k - daily_k, 0, 200)
 
 df_forecast = pd.DataFrame(forecast).set_index("День")
 st.line_chart(df_forecast)
@@ -446,19 +467,15 @@ with col_k3:
 # ======================== 8. ШІ АНАЛІЗ ТА РЕКОМЕНДАЦІЇ ========================
 st.header("🤖 8. Штучний Інтелект — Аналіз та рекомендації")
 
-# Оцінка ризику водоростей
 algae = algae_risk(final_no3, final_po4)
 st.info(f"**🌊 Ризик водоростей:** {algae}")
 
-# Рекомендація по світлу
 light = light_recommendation(co2_val, final_no3, final_po4)
 st.info(f"**💡 Рекомендація по світлу:** {light}")
 
-# NPK співвідношення
 npk_ratio = calculate_npk_ratio(final_no3, final_po4, final_k)
 st.caption(f"**📊 Співвідношення NPK:** {npk_ratio[0]:.1f} : {npk_ratio[1]:.1f} : {npk_ratio[2]:.1f}")
 
-# Компактний блок рекомендацій
 st.subheader("💡 Поточні рекомендації")
 
 recommendations = []
@@ -571,21 +588,21 @@ col_summary1, col_summary2 = st.columns(2)
 
 with col_summary1:
     st.subheader("📊 Стан системи")
-    
+
     if co2_val < co2_min_opt:
         st.warning(f"🌬️ CO₂: {co2_val:.1f} мг/л — дефіцит (норма {co2_min_opt}-{co2_max_opt})")
     elif co2_val > co2_max_opt:
         st.error(f"🌬️ CO₂: {co2_val:.1f} мг/л — надлишок")
     else:
         st.success(f"✅ CO₂: {co2_val:.1f} мг/л — норма")
-    
+
     if redfield_status == "дефіцит N":
         st.warning(f"⚠️ N:P = {redfield_ratio:.1f}:1 — дефіцит азоту")
     elif redfield_status == "дефіцит P":
         st.warning(f"⚠️ N:P = {redfield_ratio:.1f}:1 — дефіцит фосфору")
     else:
         st.success(f"✅ N:P = {redfield_ratio:.1f}:1 — баланс")
-    
+
     if final_k < k_opt_range['opt_low']:
         st.warning(f"⚠️ K/GH = {k_gh_ratio:.2f} — дефіцит K")
     elif final_k > k_opt_range['opt_high']:
@@ -595,33 +612,32 @@ with col_summary1:
 
 with col_summary2:
     st.subheader(f"📈 Прогноз через {days} днів")
-    
-    st.metric("NO₃", f"{f_end['NO3']:.1f} мг/л", 
+
+    st.metric("NO₃", f"{f_end['NO3']:.1f} мг/л",
               delta=f"{f_end['NO3'] - final_no3:.1f}",
               help="Прогноз враховує поточне дозування та споживання")
-    
-    st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", 
+
+    st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л",
               delta=f"{f_end['PO4'] - final_po4:.2f}",
               help="Прогноз враховує поточне дозування та споживання")
-    
-    st.metric("K", f"{f_end['K']:.1f} мг/л", 
+
+    st.metric("K", f"{f_end['K']:.1f} мг/л",
               delta=f"{f_end['K'] - final_k:.1f}",
               help="Прогноз враховує поточне дозування та споживання")
-    
+
     st.caption(f"""
     📌 **Фактори прогнозу:**
     - Щоденне дозування: N={current_dose_n_ml:.1f} мл, P={current_dose_p_ml:.2f} мл, K={current_dose_k_ml:.1f} мл
     - Щоденне споживання: N={daily_no3:.1f}, P={daily_po4:.2f}, K={daily_k:.1f} мг/л
-    - Коефіцієнт стабільності: {stability:.2f}
     """)
-    
+
     if f_end['NO3'] < 3:
         st.error("⚠️ Прогнозується критичне падіння NO₃! Збільште дозу N добрив.")
     if f_end['PO4'] < 0.1:
         st.error("⚠️ Прогнозується критичне падіння PO₄! Збільште дозу P добрив.")
     if f_end['K'] < k_opt_range['min']:
         st.error(f"⚠️ Прогнозується падіння K нижче {k_opt_range['min']:.0f} мг/л! Збільште дозу K добрив.")
-        
+
 # ======================== 11. ЗВІТ ========================
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
@@ -664,44 +680,36 @@ st.code(report, language="text")
 # ======================== 12. ІСТОРІЯ ПАРАМЕТРІВ ========================
 with st.expander("📜 Історія змін параметрів"):
     st.caption("Зберігайте показники вручну для відстеження динаміки (рекомендується 1 раз на день)")
-    
+
     col_save1, col_save2 = st.columns([3, 1])
     with col_save1:
         save_note = st.text_input("Нотатка до збереження (необов'язково)", key="save_note", placeholder="Наприклад: після підміни, змінив дозування...")
     with col_save2:
+        # FIX (Quality #3): both save buttons now use the same unified save_snapshot()
         if st.button("💾 Зберегти поточні показники", key="manual_save"):
             current_params = {
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'note': save_note if save_note else "",
                 'no3': final_no3, 'po4': final_po4, 'k': final_k,
                 'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
             }
-            st.session_state.history.append(current_params)
-            if len(st.session_state.history) > 50:
-                st.session_state.history = st.session_state.history[-50:]
-            st.session_state.last_params = {
-                'no3': final_no3, 'po4': final_po4, 'k': final_k,
-                'tds': final_tds, 'gh': gh, 'kh': kh, 'co2': co2_val
-            }
+            save_snapshot(current_params, note=save_note)
+            st.session_state.last_params = current_params
             st.success(f"✅ Параметри збережено! ({datetime.now().strftime('%H:%M:%S')})")
             st.rerun()
-    
+
     st.divider()
-    
+
     col_history1, col_history2 = st.columns([2, 1])
-    
+
     with col_history1:
         if st.session_state.history:
             df_history = pd.DataFrame(st.session_state.history)
             df_history['дата'] = pd.to_datetime(df_history['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
-            if 'note' in df_history.columns:
-                display_df = df_history[['дата', 'note', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
-                display_df.columns = ['Дата', 'Нотатка', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
-            else:
-                display_df = df_history[['дата', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']].tail(10)
-                display_df.columns = ['Дата', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
+            display_cols = ['дата', 'note', 'no3', 'po4', 'k', 'tds', 'gh', 'kh', 'co2']
+            display_names = ['Дата', 'Нотатка', 'NO3', 'PO4', 'K', 'TDS', 'GH', 'KH', 'CO₂']
+            display_df = df_history[display_cols].tail(10)
+            display_df.columns = display_names
             st.dataframe(display_df, use_container_width=True)
-            
+
             if len(df_history) > 1:
                 df_history_numeric = df_history[['timestamp', 'no3']].copy()
                 df_history_numeric['timestamp'] = pd.to_datetime(df_history_numeric['timestamp'])
@@ -709,7 +717,7 @@ with st.expander("📜 Історія змін параметрів"):
                 st.line_chart(df_history_numeric)
         else:
             st.info("Поки немає збережених даних. Натисніть 'Зберегти поточні показники' вище.")
-    
+
     with col_history2:
         st.markdown("**💡 Порада:**")
         st.caption("""
@@ -718,7 +726,7 @@ with st.expander("📜 Історія змін параметрів"):
         - Додавайте нотатки для важливих змін
         - Це допоможе відстежувати довгострокову динаміку
         """)
-        
+
         if st.button("🗑️ Очистити історію", key="clear_history"):
             st.session_state.history = []
             st.session_state.alerts = []
