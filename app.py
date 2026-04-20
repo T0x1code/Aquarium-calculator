@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import numpy as np
 
-st.set_page_config(page_title="Toxicode Aquarium System V11.0", layout="wide")
-st.title("🌿 Toxicode Aquarium System V11.0 — Точний акваріумний аналіз")
+st.set_page_config(page_title="Toxicode Aquarium System V11.1", layout="wide")
+st.title("🌿 Toxicode Aquarium System V11.1 — Точний акваріумний аналіз")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ СЕСІЇ ========================
 if 'history' not in st.session_state:
@@ -14,7 +13,6 @@ if 'alerts' not in st.session_state:
 
 # ======================== HELPER FUNCTIONS ========================
 def calculate_co2(kh, ph):
-    """CO₂ (мг/л) = 3 * KH * 10^(7-pH)"""
     try:
         return 3 * kh * (10 ** (7 - ph))
     except:
@@ -30,14 +28,25 @@ def get_optimal_k_range(gh):
     }
 
 def dose_to_mgl(dose_ml, conc_g_l, volume_l):
-    """Перевід мл добрива в мг/л підняття концентрації"""
+    """
+    Розрахунок підняття концентрації при внесенні добрива
+    
+    Приклад: 
+    - Добриво з концентрацією 50 г/л означає що в 1 літрі 50,000 мг речовини
+    - Якщо ви вносите 1 мл такого добрива в 100 л акваріума:
+      (1 мл × 50,000 мг/л) / 100 л = 500 мг/л підняття
+    
+    УВАГА! Більшість комерційних добрив мають концентрацію 1-10 г/л, а не 50!
+    """
     if volume_l <= 0:
         return 0
-    return (dose_ml * conc_g_l * 1000) / volume_l
+    # Переводимо г/л в мг/л (1 г/л = 1000 мг/л)
+    conc_mg_l = conc_g_l * 1000
+    return (dose_ml * conc_mg_l) / volume_l
 
 # ======================== SIDEBAR ========================
 with st.sidebar:
-    st.header("⚙️ Конфігурація системи")
+    st.header("⚙️ Конфігурація")
     tank_vol = st.number_input("Об'єм акваріума (л)", value=200.0, step=10.0)
     
     st.divider()
@@ -48,13 +57,11 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🔬 Фактори коригування")
-    efficiency_n = st.slider("Ефективність засвоєння N (%)", 0, 100, 80, 
-                             help="80% означає що 20% добрив не засвоюється або блокується")
+    efficiency_n = st.slider("Ефективність засвоєння N (%)", 0, 100, 80)
     efficiency_p = st.slider("Ефективність засвоєння P (%)", 0, 100, 80)
     efficiency_k = st.slider("Ефективність засвоєння K (%)", 0, 100, 80)
     
-    organic_n_source = st.checkbox("Є органічне джерело N (риби, корм)", value=True,
-                                   help="Риби та корм виділяють аміак який перетворюється на NO3")
+    organic_n_source = st.checkbox("Є органічне джерело N (риби, корм)", value=True)
     
     days = st.slider("Період прогнозу (днів)", 1, 30, 7)
 
@@ -70,7 +77,6 @@ with st.expander("Розрахунок солей для підміни", expand
         target_ca_mg = st.slider("Цільове Ca:Mg", 1.0, 6.0, 3.0, 0.5)
     
     with col_rem2:
-        # Розрахунок
         mg_mgl = target_gh / (target_ca_mg / 5.1 + 1 / 4.3)
         ca_mgl = mg_mgl * target_ca_mg
         
@@ -81,26 +87,23 @@ with st.expander("Розрахунок солей для підміни", expand
         cacl2_g = remaining_ca_g / 0.273 if remaining_ca_g > 0 else 0
         mgso4_g = (mg_mgl * c_vol / 1000) / 0.0986 if mg_mgl > 0 else 0
         
-        predicted_tds = ((caco3_g + cacl2_g + mgso4_g) * 1000) / c_vol
-        
         st.success(f"""
         **Для {c_vol:.0f} л осмосу додай:**
         🧂 **{caco3_g:.3f} г** CaCO₃
         🧂 **{cacl2_g:.3f} г** CaCl₂·2H₂O
         🧂 **{mgso4_g:.3f} г** MgSO₄·7H₂O
         """)
-        st.caption(f"📊 Прогноз TDS: {predicted_tds:.0f} ppm")
 
-# ======================== 2. ПОТОЧНИЙ СТАН ТА ІСТОРІЯ СПОЖИВАННЯ ========================
-st.header("📊 2. Введення даних для розрахунку споживання")
+# ======================== 2. РОЗРАХУНОК СПОЖИВАННЯ ========================
+st.header("📊 2. Розрахунок реального споживання")
 
 st.info("""
 **Як правильно ввести дані:**
-1. Виберіть період між двома тестами (наприклад, 7 днів)
-2. Введіть результати першого тесту (початок періоду)
-3. Введіть результати другого тесту (зараз)
-4. Вкажіть скільки добрив ви вносили за цей період (сумарно, не щодня!)
-5. Вкажіть скільки літрів води підмінили за цей період
+1. Вкажіть період між двома тестами (наприклад, 7 днів)
+2. Введіть результати першого тесту (на початку періоду)
+3. Введіть результати другого тесту (в кінці періоду)
+4. Вкажіть **загальний об'єм** добрив, внесених за ВЕСЬ період (не щодня!)
+5. Вкажіть **загальний об'єм** підміненої води за ВЕСЬ період
 """)
 
 col_period, col_wc = st.columns(2)
@@ -108,74 +111,75 @@ col_period, col_wc = st.columns(2)
 with col_period:
     days_between = st.number_input("Днів між тестами", min_value=1, max_value=30, value=7, step=1)
     
-    st.subheader("📋 Перший тест (початок періоду)")
-    no3_start = st.number_input("NO3 (початок)", value=15.0, step=0.5, key="no3_start")
-    po4_start = st.number_input("PO4 (початок)", value=1.0, step=0.1, key="po4_start")
-    k_start = st.number_input("K (початок)", value=15.0, step=0.5, key="k_start")
+    st.subheader("📋 Перший тест (початок)")
+    no3_start = st.number_input("NO3 (початок)", value=15.0, step=0.5)
+    po4_start = st.number_input("PO4 (початок)", value=1.0, step=0.1)
+    k_start = st.number_input("K (початок)", value=15.0, step=0.5)
     
-    st.subheader("📋 Другий тест (зараз)")
-    no3_end = st.number_input("NO3 (зараз)", value=10.0, step=0.5, key="no3_end")
-    po4_end = st.number_input("PO4 (зараз)", value=0.5, step=0.1, key="po4_end")
-    k_end = st.number_input("K (зараз)", value=10.0, step=0.5, key="k_end")
+    st.subheader("📋 Другий тест (кінець)")
+    no3_end = st.number_input("NO3 (кінець)", value=10.0, step=0.5)
+    po4_end = st.number_input("PO4 (кінець)", value=0.5, step=0.1)
+    k_end = st.number_input("K (кінець)", value=10.0, step=0.5)
 
 with col_wc:
-    st.subheader("💧 Внесення за період")
-    dose_n_ml = st.number_input("Внесено N добрив (мл за весь період)", value=0.0, step=5.0)
-    conc_n = st.number_input("Концентрація N (г/л)", value=50.0, step=5.0)
+    st.subheader("💧 Внесені добрива (за весь період)")
     
-    dose_p_ml = st.number_input("Внесено P добрив (мл за весь період)", value=0.0, step=2.0)
-    conc_p = st.number_input("Концентрація P (г/л)", value=5.0, step=0.5)
+    dose_n_ml = st.number_input("Внесено N (мл)", value=0.0, step=1.0)
+    conc_n = st.number_input("Концентрація N (г/л)", value=1.0, step=0.5,
+                             help="Приклад: якщо на банці написано 1г/л = 1000 мг/л")
+    st.caption(f"→ Підніме NO3 на {dose_to_mgl(dose_n_ml, conc_n, tank_vol):.2f} мг/л")
     
-    dose_k_ml = st.number_input("Внесено K добрив (мл за весь період)", value=0.0, step=5.0)
-    conc_k = st.number_input("Концентрація K (г/л)", value=20.0, step=2.0)
+    dose_p_ml = st.number_input("Внесено P (мл)", value=0.0, step=0.5)
+    conc_p = st.number_input("Концентрація P (г/л)", value=0.5, step=0.1)
+    st.caption(f"→ Підніме PO4 на {dose_to_mgl(dose_p_ml, conc_p, tank_vol):.3f} мг/л")
     
-    st.subheader("💧 Підміна за період")
+    dose_k_ml = st.number_input("Внесено K (мл)", value=0.0, step=1.0)
+    conc_k = st.number_input("Концентрація K (г/л)", value=1.0, step=0.5)
+    st.caption(f"→ Підніме K на {dose_to_mgl(dose_k_ml, conc_k, tank_vol):.2f} мг/л")
+    
+    st.subheader("💧 Підміна")
     wc_liters = st.number_input("Літрів підмінено за період", value=0.0, step=10.0)
 
-# Розрахунок споживання
+# Розрахунок
 wc_fraction = wc_liters / tank_vol if tank_vol > 0 else 0
 
-# Враховуємо що підміна розбавляє концентрацію
+# Очікуване значення після підміни
 no3_after_wc = no3_start * (1 - wc_fraction)
 po4_after_wc = po4_start * (1 - wc_fraction)
 k_after_wc = k_start * (1 - wc_fraction)
 
-# Враховуємо внесені добрива (переводимо мл в мг/л)
-no3_added = dose_to_mgl(dose_n_ml, conc_n, tank_vol)
-po4_added = dose_to_mgl(dose_p_ml, conc_p, tank_vol)
-k_added = dose_to_mgl(dose_k_ml, conc_k, tank_vol)
+# Додаємо внесені добрива
+no3_expected = no3_after_wc + dose_to_mgl(dose_n_ml, conc_n, tank_vol)
+po4_expected = po4_after_wc + dose_to_mgl(dose_p_ml, conc_p, tank_vol)
+k_expected = k_after_wc + dose_to_mgl(dose_k_ml, conc_k, tank_vol)
 
-# Очікувана концентрація без споживання
-expected_no3 = no3_after_wc + no3_added
-expected_po4 = po4_after_wc + po4_added
-expected_k = k_after_wc + k_added
+# Споживання = очікуване - фактичне
+consumed_no3 = max(0, no3_expected - no3_end)
+consumed_po4 = max(0, po4_expected - po4_end)
+consumed_k = max(0, k_expected - k_end)
 
-# Реальне споживання (різниця між очікуваним та фактичним)
-consumed_no3 = max(0, expected_no3 - no3_end)
-consumed_po4 = max(0, expected_po4 - po4_end)
-consumed_k = max(0, expected_k - k_end)
-
-# Денне споживання
-daily_cons_no3 = consumed_no3 / days_between if days_between > 0 else 0
-daily_cons_po4 = consumed_po4 / days_between if days_between > 0 else 0
-daily_cons_k = consumed_k / days_between if days_between > 0 else 0
+daily_no3 = consumed_no3 / days_between if days_between > 0 else 0
+daily_po4 = consumed_po4 / days_between if days_between > 0 else 0
+daily_k = consumed_k / days_between if days_between > 0 else 0
 
 st.divider()
-st.subheader("📊 Результат розрахунку споживання")
+st.subheader("📊 Результат")
 
 col_r1, col_r2, col_r3 = st.columns(3)
 with col_r1:
-    st.metric("Денне споживання NO3", f"{daily_cons_no3:.2f} мг/л/день")
-    st.caption(f"Очікувано: {expected_no3:.1f} → Факт: {no3_end:.1f}")
+    st.metric("Денне споживання NO3", f"{daily_no3:.2f} мг/л")
+    st.caption(f"Очікувано: {no3_expected:.1f} → Факт: {no3_end:.1f}")
 with col_r2:
-    st.metric("Денне споживання PO4", f"{daily_cons_po4:.3f} мг/л/день")
-    st.caption(f"Очікувано: {expected_po4:.2f} → Факт: {po4_end:.2f}")
+    st.metric("Денне споживання PO4", f"{daily_po4:.3f} мг/л")
+    st.caption(f"Очікувано: {po4_expected:.2f} → Факт: {po4_end:.2f}")
 with col_r3:
-    st.metric("Денне споживання K", f"{daily_cons_k:.2f} мг/л/день")
-    st.caption(f"Очікувано: {expected_k:.1f} → Факт: {k_end:.1f}")
+    st.metric("Денне споживання K", f"{daily_k:.2f} мг/л")
+    st.caption(f"Очікувано: {k_expected:.1f} → Факт: {k_end:.1f}")
 
-if consumed_no3 < 0 or consumed_po4 < 0 or consumed_k < 0:
-    st.warning("⚠️ Виявлено накопичення! Можливі причини: перегодівля риб, повільне засвоєння, або неточні тести.")
+if no3_expected < no3_end:
+    st.warning(f"⚠️ Виявлено накопичення NO3! Можливі причини: перегодівля риб, розклад органіки, або неточні тести. Накопичено: {no3_end - no3_expected:.1f} мг/л")
+if po4_expected < po4_end:
+    st.warning(f"⚠️ Виявлено накопичення PO4! Накопичено: {po4_end - po4_expected:.2f} мг/л")
 
 # ======================== 3. ПОТОЧНІ ПАРАМЕТРИ ========================
 st.header("📋 3. Поточні параметри води")
@@ -183,63 +187,53 @@ st.header("📋 3. Поточні параметри води")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("Макроелементи")
-    no3_current = st.number_input("NO3 (мг/л)", value=no3_end, step=0.5, key="no3_cur")
-    po4_current = st.number_input("PO4 (мг/л)", value=po4_end, step=0.1, key="po4_cur")
-    k_current = st.number_input("K (мг/л)", value=k_end, step=0.5, key="k_cur")
+    no3_current = st.number_input("NO3 (мг/л)", value=no3_end, step=0.5)
+    po4_current = st.number_input("PO4 (мг/л)", value=po4_end, step=0.1)
+    k_current = st.number_input("K (мг/л)", value=k_end, step=0.5)
     tds_current = st.number_input("TDS", value=150.0, step=5.0)
 
 with col2:
-    st.subheader("Жорсткість")
     gh = st.number_input("GH (°dH)", value=6, step=1)
     kh = st.number_input("KH (°dH)", value=2, step=1)
-    
-    st.divider()
-    st.subheader("🌬️ CO₂")
     ph_morning = st.number_input("pH (ранок)", value=7.2, step=0.1)
     ph_evening = st.number_input("pH (вечір)", value=6.8, step=0.1)
     co2_val = calculate_co2(kh, ph_evening)
     st.metric("Розрахунковий CO₂", f"{co2_val:.1f} мг/л")
 
 with col3:
-    st.subheader("Налаштування прогнозу")
-    use_calculated_consumption = st.checkbox("Використати розраховане споживання", value=True)
-    
-    if use_calculated_consumption:
-        daily_no3 = daily_cons_no3
-        daily_po4 = daily_cons_po4
-        daily_k = daily_cons_k
+    use_calculated = st.checkbox("Використати розраховане споживання", value=True)
+    if use_calculated:
         st.info(f"Споживання: N={daily_no3:.2f}, P={daily_po4:.3f}, K={daily_k:.2f} мг/л/день")
     else:
         daily_no3 = st.number_input("Споживання NO3 (мг/л/день)", value=2.0, step=0.5)
         daily_po4 = st.number_input("Споживання PO4 (мг/л/день)", value=0.1, step=0.05)
         daily_k = st.number_input("Споживання K (мг/л/день)", value=1.0, step=0.5)
 
-# ======================== 4. ПІДМІНА ТА ДОЗУВАННЯ ========================
+# ======================== 4. ПЛАНОВА ПІДМІНА ========================
 st.divider()
-st.header("💧 4. Планова підміна та дозування")
+st.header("💧 4. Планова підміна")
 
-col_plan1, col_plan2 = st.columns(2)
+planned_wc_l = st.number_input("Літри підміни", value=50.0, step=10.0)
+planned_wc_pct = planned_wc_l / tank_vol if tank_vol > 0 else 0
+st.metric("Відсоток підміни", f"{planned_wc_pct*100:.1f}%")
 
-with col_plan1:
-    st.subheader("Планова підміна")
-    planned_wc_l = st.number_input("Літри підміни", value=50.0, step=10.0)
-    planned_wc_pct = planned_wc_l / tank_vol if tank_vol > 0 else 0
-    st.metric("Відсоток підміни", f"{planned_wc_pct*100:.1f}%")
+st.subheader("🧪 Добрива ПІСЛЯ підміни (додаються одноразово)")
+col_after1, col_after2, col_after3 = st.columns(3)
 
-with col_plan2:
-    st.subheader("Добрива ПІСЛЯ підміни (на цей об'єм)")
-    dose_after_n_ml = st.number_input("N мл після підміни", value=0.0, step=5.0, key="after_n")
-    conc_n_after = st.number_input("N г/л", value=50.0, key="conc_n_after")
-    add_n_after = dose_to_mgl(dose_after_n_ml, conc_n_after, tank_vol)
-    
-    dose_after_p_ml = st.number_input("P мл після підміни", value=0.0, step=2.0, key="after_p")
-    conc_p_after = st.number_input("P г/л", value=5.0, key="conc_p_after")
-    add_p_after = dose_to_mgl(dose_after_p_ml, conc_p_after, tank_vol)
-    
-    dose_after_k_ml = st.number_input("K мл після підміни", value=0.0, step=5.0, key="after_k")
-    conc_k_after = st.number_input("K г/л", value=20.0, key="conc_k_after")
-    add_k_after = dose_to_mgl(dose_after_k_ml, conc_k_after, tank_vol)
+with col_after1:
+    after_n_ml = st.number_input("N мл після підміни", value=0.0, step=1.0)
+    after_conc_n = st.number_input("N г/л", value=1.0, step=0.5)
+    after_n_add = dose_to_mgl(after_n_ml, after_conc_n, tank_vol)
+
+with col_after2:
+    after_p_ml = st.number_input("P мл після підміни", value=0.0, step=0.5)
+    after_conc_p = st.number_input("P г/л", value=0.5, step=0.1)
+    after_p_add = dose_to_mgl(after_p_ml, after_conc_p, tank_vol)
+
+with col_after3:
+    after_k_ml = st.number_input("K мл після підміни", value=0.0, step=1.0)
+    after_conc_k = st.number_input("K г/л", value=1.0, step=0.5)
+    after_k_add = dose_to_mgl(after_k_ml, after_conc_k, tank_vol)
 
 # ======================== 5. ЩОДЕННЕ ДОЗУВАННЯ ========================
 st.header("🧪 5. Щоденне дозування")
@@ -247,41 +241,34 @@ st.header("🧪 5. Щоденне дозування")
 col_daily1, col_daily2, col_daily3 = st.columns(3)
 
 with col_daily1:
-    daily_dose_n_ml = st.number_input("N мл/день", value=0.0, step=2.0, key="daily_n")
-    conc_n_daily = st.number_input("N г/л", value=50.0, key="conc_n_daily")
-    daily_add_n = dose_to_mgl(daily_dose_n_ml, conc_n_daily, tank_vol)
+    daily_n_ml = st.number_input("N мл/день", value=0.0, step=1.0)
+    daily_conc_n = st.number_input("N г/л", value=1.0, step=0.5)
+    daily_n_add = dose_to_mgl(daily_n_ml, daily_conc_n, tank_vol)
 
 with col_daily2:
-    daily_dose_p_ml = st.number_input("P мл/день", value=0.0, step=1.0, key="daily_p")
-    conc_p_daily = st.number_input("P г/л", value=5.0, key="conc_p_daily")
-    daily_add_p = dose_to_mgl(daily_dose_p_ml, conc_p_daily, tank_vol)
+    daily_p_ml = st.number_input("P мл/день", value=0.0, step=0.5)
+    daily_conc_p = st.number_input("P г/л", value=0.5, step=0.1)
+    daily_p_add = dose_to_mgl(daily_p_ml, daily_conc_p, tank_vol)
 
 with col_daily3:
-    daily_dose_k_ml = st.number_input("K мл/день", value=0.0, step=2.0, key="daily_k")
-    conc_k_daily = st.number_input("K г/л", value=20.0, key="conc_k_daily")
-    daily_add_k = dose_to_mgl(daily_dose_k_ml, conc_k_daily, tank_vol)
+    daily_k_ml = st.number_input("K мл/день", value=0.0, step=1.0)
+    daily_conc_k = st.number_input("K г/л", value=1.0, step=0.5)
+    daily_k_add = dose_to_mgl(daily_k_ml, daily_conc_k, tank_vol)
 
-# ======================== 6. РОЗРАХУНОК ФІНАЛЬНИХ ЗНАЧЕНЬ ========================
-# Після підміни та внесення добрив після підміни
-after_wc_no3 = no3_current * (1 - planned_wc_pct) + add_n_after
-after_wc_po4 = po4_current * (1 - planned_wc_pct) + add_p_after
-after_wc_k = k_current * (1 - planned_wc_pct) + add_k_after
+# ======================== 6. ФІНАЛЬНИЙ СТАН ПІСЛЯ ПІДМІНИ ========================
+after_wc_no3 = no3_current * (1 - planned_wc_pct) + after_n_add
+after_wc_po4 = po4_current * (1 - planned_wc_pct) + after_p_add
+after_wc_k = k_current * (1 - planned_wc_pct) + after_k_add
 
-# Враховуємо щоденне дозування (воно додається КОЖНОГО ДНЯ)
-# Тому для прогнозу ми будемо додавати його в циклі
-
-st.info(f"**📈 Стан після підміни та внесення:** NO₃={after_wc_no3:.1f} | PO₄={after_wc_po4:.2f} | K={after_wc_k:.1f}")
+st.info(f"**📈 Стан після підміни та одноразового внесення:** NO₃={after_wc_no3:.1f} | PO₄={after_wc_po4:.2f} | K={after_wc_k:.1f}")
 
 # ======================== 7. ПРОГНОЗ ========================
 st.header(f"📈 6. Прогноз на {days} днів")
 
-# Коригуємо споживання на ефективність
-effective_daily_no3 = daily_no3 * (efficiency_n / 100)
-effective_daily_po4 = daily_po4 * (efficiency_p / 100)
-effective_daily_k = daily_k * (efficiency_k / 100)
-
-# Додаткове джерело N з органіки
-organic_n = 0.5 if organic_n_source else 0  # приблизно 0.5 мг/л NO3 на день від риб
+effective_no3 = daily_no3 * (efficiency_n / 100)
+effective_po4 = daily_po4 * (efficiency_p / 100)
+effective_k = daily_k * (efficiency_k / 100)
+organic_n = 0.5 if organic_n_source else 0
 
 forecast = []
 curr_n, curr_p, curr_k = after_wc_no3, after_wc_po4, after_wc_k
@@ -293,38 +280,35 @@ for d in range(days + 1):
         "PO4": max(0, round(curr_p, 2)),
         "K": max(0, round(curr_k, 1))
     })
-    
-    # Зміна за день: + добрива - споживання + органіка (тільки для N)
-    curr_n = max(0, curr_n + daily_add_n - effective_daily_no3 + organic_n)
-    curr_p = max(0, curr_p + daily_add_p - effective_daily_po4)
-    curr_k = max(0, curr_k + daily_add_k - effective_daily_k)
+    curr_n = max(0, curr_n + daily_n_add - effective_no3 + organic_n)
+    curr_p = max(0, curr_p + daily_p_add - effective_po4)
+    curr_k = max(0, curr_k + daily_k_add - effective_k)
 
 df_forecast = pd.DataFrame(forecast).set_index("День")
 st.line_chart(df_forecast)
 
-# ======================== 8. АНАЛІЗ K/GH ========================
+# ======================== 8. K/GH ========================
 st.header("🧂 7. K/GH співвідношення")
 
-k_opt_range = get_optimal_k_range(gh)
-k_gh_ratio = curr_k / gh if gh > 0 else 0
+k_opt = get_optimal_k_range(gh)
+k_ratio = curr_k / gh if gh > 0 else 0
 
 col_k1, col_k2, col_k3 = st.columns(3)
-
 with col_k1:
     st.metric("Поточний K", f"{curr_k:.1f} мг/л")
 with col_k2:
-    st.metric("K/GH ratio", f"{k_gh_ratio:.2f}", delta="норма 1.5-2.5")
+    st.metric("K/GH", f"{k_ratio:.2f}", delta="норма 1.5-2.5")
 with col_k3:
-    if curr_k < k_opt_range['min']:
-        st.error(f"🔴 Дефіцит K — потрібно +{k_opt_range['min'] - curr_k:.1f} мг/л")
-    elif curr_k <= k_opt_range['opt_high']:
+    if curr_k < k_opt['min']:
+        st.error(f"Дефіцит K: +{k_opt['min'] - curr_k:.1f} мг/л")
+    elif curr_k <= k_opt['opt_high']:
         st.success("✅ K в нормі")
     else:
-        st.warning(f"🟡 Надлишок K — знизьте на {curr_k - k_opt_range['opt_high']:.1f} мг/л")
+        st.warning(f"Надлишок K: -{curr_k - k_opt['opt_high']:.1f} мг/л")
 
-# ======================== 9. ПЛАН КОРЕКЦІЇ ========================
+# ======================== 9. КОРЕКЦІЯ ========================
 st.divider()
-st.header("📅 8. План корекції дозування")
+st.header("📅 8. План корекції")
 
 f_end = forecast[-1]
 
@@ -333,90 +317,52 @@ delta_po4 = target_po4 - f_end["PO4"]
 delta_k = target_k - f_end["K"]
 
 if delta_no3 > 0:
-    change_n = (delta_no3 * tank_vol) / (conc_n_daily * days) if conc_n_daily > 0 else 0
-    st.metric("N корекція", f"+{change_n:.1f} мл/день", delta="додати до поточної дози")
+    change_n = (delta_no3 * tank_vol) / (daily_conc_n * days) if daily_conc_n > 0 else 0
+    st.metric("N корекція", f"+{change_n:.1f} мл/день")
 elif delta_no3 < 0:
-    change_n = (abs(delta_no3) * tank_vol) / (conc_n_daily * days) if conc_n_daily > 0 else 0
-    st.metric("N корекція", f"-{change_n:.1f} мл/день", delta="зменшити поточну дозу")
+    change_n = (abs(delta_no3) * tank_vol) / (daily_conc_n * days) if daily_conc_n > 0 else 0
+    st.metric("N корекція", f"-{change_n:.1f} мл/день")
 else:
     st.metric("N корекція", "без змін")
 
 if delta_po4 > 0:
-    change_p = (delta_po4 * tank_vol) / (conc_p_daily * days) if conc_p_daily > 0 else 0
-    st.metric("P корекція", f"+{change_p:.2f} мл/день", delta="додати до поточної дози")
+    change_p = (delta_po4 * tank_vol) / (daily_conc_p * days) if daily_conc_p > 0 else 0
+    st.metric("P корекція", f"+{change_p:.2f} мл/день")
 elif delta_po4 < 0:
-    change_p = (abs(delta_po4) * tank_vol) / (conc_p_daily * days) if conc_p_daily > 0 else 0
-    st.metric("P корекція", f"-{change_p:.2f} мл/день", delta="зменшити поточну дозу")
+    change_p = (abs(delta_po4) * tank_vol) / (daily_conc_p * days) if daily_conc_p > 0 else 0
+    st.metric("P корекція", f"-{change_p:.2f} мл/день")
 else:
     st.metric("P корекція", "без змін")
 
 if delta_k > 0:
-    change_k = (delta_k * tank_vol) / (conc_k_daily * days) if conc_k_daily > 0 else 0
-    st.metric("K корекція", f"+{change_k:.1f} мл/день", delta="додати до поточної дози")
+    change_k = (delta_k * tank_vol) / (daily_conc_k * days) if daily_conc_k > 0 else 0
+    st.metric("K корекція", f"+{change_k:.1f} мл/день")
 elif delta_k < 0:
-    change_k = (abs(delta_k) * tank_vol) / (conc_k_daily * days) if conc_k_daily > 0 else 0
-    st.metric("K корекція", f"-{change_k:.1f} мл/день", delta="зменшити поточну дозу")
+    change_k = (abs(delta_k) * tank_vol) / (daily_conc_k * days) if daily_conc_k > 0 else 0
+    st.metric("K корекція", f"-{change_k:.1f} мл/день")
 else:
     st.metric("K корекція", "без змін")
 
-# ======================== 10. ЕКСПЕРТНИЙ ВИСНОВОК ========================
-st.header("📝 9. Експертний висновок")
-
-# Оцінка ризику водоростей
-if po4_current > 0:
-    ratio_np = no3_current / po4_current
-    if ratio_np < 10:
-        algae_risk = "🔴 Високий (дефіцит N)"
-    elif ratio_np > 25:
-        algae_risk = "🟠 Високий (дефіцит P)"
-    elif no3_current > 30 or po4_current > 1.5:
-        algae_risk = "🟡 Середній (надлишок)"
-    else:
-        algae_risk = "🟢 Низький"
-else:
-    algae_risk = "Немає даних"
-
-col_exp1, col_exp2 = st.columns(2)
-
-with col_exp1:
-    st.write("**Стан системи:**")
-    if co2_val < 20:
-        st.warning(f"CO₂: {co2_val:.1f} мг/л — дефіцит")
-    elif co2_val > 40:
-        st.warning(f"CO₂: {co2_val:.1f} мг/л — надлишок")
-    else:
-        st.success(f"✅ CO₂: {co2_val:.1f} мг/л — норма")
-    
-    st.write(f"**Ризик водоростей:** {algae_risk}")
-
-with col_exp2:
-    st.write(f"**Прогноз через {days} днів:**")
-    st.metric("NO₃", f"{f_end['NO3']:.1f} мг/л", delta=f"{f_end['NO3'] - target_no3:.1f}")
-    st.metric("PO₄", f"{f_end['PO4']:.2f} мг/л", delta=f"{f_end['PO4'] - target_po4:.2f}")
-    st.metric("K", f"{f_end['K']:.1f} мг/л", delta=f"{f_end['K'] - target_k:.1f}")
-
-# ======================== 11. ЗВІТ ========================
+# ======================== 10. ЗВІТ ========================
 st.divider()
-st.subheader("📋 10. Звіт")
+st.subheader("📋 9. Звіт")
 
-report = f"""=== TOXICODE AQUARIUM V11.0 REPORT ===
+report = f"""=== TOXICODE AQUARIUM V11.1 ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-ОСНОВНІ ПАРАМЕТРИ
+ПАРАМЕТРИ
 Об'єм: {tank_vol} л | Підміна: {planned_wc_l} л ({planned_wc_pct*100:.1f}%)
 GH: {gh} dH | KH: {kh} dH | CO₂: {co2_val:.1f} мг/л
 
 СПОЖИВАННЯ (мг/л/день)
-NO3: {daily_cons_no3:.2f} | PO4: {daily_cons_po4:.3f} | K: {daily_cons_k:.2f}
+NO3: {daily_no3:.2f} | PO4: {daily_po4:.3f} | K: {daily_k:.2f}
 
 ПРОГНОЗ ЧЕРЕЗ {days} ДНІВ
 NO3: {f_end['NO3']:.1f} → {target_no3}
 PO4: {f_end['PO4']:.2f} → {target_po4}
 K: {f_end['K']:.1f} → {target_k}
-
-РИЗИК ВОДОРОСТЕЙ: {algae_risk}
 ====================================="""
 
 st.code(report, language="text")
 
-st.caption("⚡ Toxicode V11.0 | Коректне споживання | Органічне джерело N | Ефективність засвоєння")
+st.caption("⚡ Toxicode V11.1 | Правильний розрахунок доз | Врахування реальної концентрації добрив")
