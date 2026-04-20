@@ -446,37 +446,61 @@ if f_end['K'] < k_range['min']:
 if f_end['NO3'] > 40:
     st.warning(f"⚠️ День {days}: NO3 перевищить 40 мг/л.")
 
-# Waterfall
+# ======================== WATERFALL (ВИПРАВЛЕНИЙ) ========================
 with st.expander("🌊 Waterfall — баланс за тиждень"):
-    wf_sel = st.selectbox("Елемент:", ["NO3", "PO4", "K"], key="wf_sel")
-    pmap = {
-        "NO3": (final_no3, daily_no3, add_no3_daily, org_no3),
-        "PO4": (final_po4, daily_po4, add_po4_daily, org_po4),
-        "K":   (final_k,   daily_k,   add_k_daily,   org_k),
-    }
-    sv, cv, fv, ov = pmap[wf_sel]
-    n7 = 7
-    wc_7   = sv * wc_daily_frac * n7
-    cons_7 = cv * n7
-    fert_7 = fv * n7
-    org_7  = ov * n7
-    end_7  = sv - wc_7 - cons_7 + fert_7 + org_7
-
+    wf_sel = st.selectbox("Елемент для аналізу:", ["NO3", "PO4", "K"], key="wf_sel")
+    
+    # Відповідні дані для вибраного елемента
+    if wf_sel == "NO3":
+        start_val = final_no3
+        consumption = daily_no3
+        fertilizer = add_no3_daily
+        organic = org_no3
+    elif wf_sel == "PO4":
+        start_val = final_po4
+        consumption = daily_po4
+        fertilizer = add_po4_daily
+        organic = org_po4
+    else:  # K
+        start_val = final_k
+        consumption = daily_k
+        fertilizer = add_k_daily
+        organic = org_k
+    
+    # Розрахунок за 7 днів
+    days_week = 7
+    wc_loss_per_day = start_val * wc_daily_frac
+    total_wc_loss = wc_loss_per_day * days_week
+    total_consumption = consumption * days_week
+    total_fertilizer = fertilizer * days_week
+    total_organic = organic * days_week
+    
+    end_val = start_val - total_wc_loss - total_consumption + total_fertilizer + total_organic
+    
     wfw1, wfw2 = st.columns([2, 1])
+    
     with wfw1:
         wf_df = pd.DataFrame({
-            "Компонент": ["Початок тижня", "− Підміна", "− Споживання", "+ Добрива", "+ Органіка/джерело"],
-            "мг/л": [sv, -wc_7, -cons_7, fert_7, org_7]
-        }).set_index("Компонент")
-        st.bar_chart(wf_df)
+            "Компонент": ["Початок тижня", "− Підміна", "− Споживання", "+ Добрива", "+ Органіка/джерело", "= Кінець тижня"],
+            "мг/л": [start_val, -total_wc_loss, -total_consumption, total_fertilizer, total_organic, end_val]
+        })
+        st.bar_chart(wf_df.set_index("Компонент"))
+    
     with wfw2:
-        st.metric("Початок", f"{sv:.2f} мг/л")
-        st.metric("− Підміна",     f"−{wc_7:.2f}")
-        st.metric("− Споживання",  f"−{cons_7:.2f}")
-        st.metric("+ Добрива",     f"+{fert_7:.2f}")
-        st.metric("+ Органіка",    f"+{org_7:.2f}")
-        st.metric("= Кінець тижня", f"{end_7:.2f} мг/л",
-                  delta=f"{end_7-sv:+.2f}")
+        st.metric("📌 Початок", f"{start_val:.2f} мг/л")
+        st.metric("💧 Підміна", f"-{total_wc_loss:.2f}", help=f"щодня -{wc_loss_per_day:.3f} мг/л")
+        st.metric("🌿 Споживання", f"-{total_consumption:.2f}", help=f"щодня -{consumption:.3f} мг/л")
+        st.metric("🧪 Добрива", f"+{total_fertilizer:.2f}", help=f"щодня +{fertilizer:.3f} мг/л")
+        st.metric("⚗️ Органіка", f"+{total_organic:.2f}", help=f"щодня +{organic:.3f} мг/л")
+        st.metric("🎯 Кінець тижня", f"{end_val:.2f} мг/л", delta=f"{end_val - start_val:+.2f}")
+        
+        # Попередження
+        if end_val < 0.1:
+            st.error("⚠️ Прогнозується майже нульове значення!")
+        elif end_val > 50 and wf_sel == "NO3":
+            st.warning("⚠️ Високий NO3 наприкінці тижня!")
+        elif end_val > 3 and wf_sel == "PO4":
+            st.warning("⚠️ Високий PO4 наприкінці тижня!")
 
 # ======================== 7. K/GH АНАЛІЗ ========================
 st.header("🧂 7. K/GH співвідношення")
