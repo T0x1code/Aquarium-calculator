@@ -15,7 +15,7 @@ import numpy as np
 from datetime import datetime
 
 st.set_page_config(page_title="Toxicode Aquarium V14", layout="wide")
-st.title("🌿 Toxicode Aquarium System V14 — Штучний Інтелект Акваріуміста")
+st.title("🌿 Toxicode Aquarium System V14 — Допомога для Акваріуміста")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ ========================
 if 'history' not in st.session_state:
