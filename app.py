@@ -227,6 +227,74 @@ st.caption("""
 або **накопичення/джерело** (якщо рівень впав менше або виріс — органіка, перегодовування тощо).
 """)
 
+# --- КОНВЕРТЕР N↔NO3 та P↔PO4 ---
+with st.expander("🔄 Конвертер: N ↔ NO3 та P ↔ PO4", expanded=False):
+    st.caption("""
+    **Чому це потрібно:** одні тести показують NO₃ (нітрат), інші — N (азот).
+    Те саме з PO₄ (фосфат) і P (фосфор). Коефіцієнти перерахунку:
+    - NO₃ → N: ×0.2259  |  N → NO₃: ×4.427
+    - PO₄ → P: ×0.3261  |  P → PO₄: ×3.066
+    """)
+
+    conv_tab1, conv_tab2 = st.tabs(["🔵 Азот / Нітрат (N ↔ NO₃)", "🟠 Фосфор / Фосфат (P ↔ PO₄)"])
+
+    with conv_tab1:
+        cv1, cv2, cv3 = st.columns(3)
+        with cv1:
+            st.markdown("**NO₃ → N**")
+            no3_input = st.number_input("NO₃ (мг/л)", value=10.0, step=0.5, format="%.2f", key="conv_no3_in")
+            n_result  = no3_input * 0.2259
+            st.metric("N (мг/л)", f"{n_result:.3f}")
+            st.caption("NO₃ × 0.2259 = N")
+        with cv2:
+            st.markdown("**N → NO₃**")
+            n_input   = st.number_input("N (мг/л)", value=2.0, step=0.1, format="%.2f", key="conv_n_in")
+            no3_result = n_input * 4.427
+            st.metric("NO₃ (мг/л)", f"{no3_result:.3f}")
+            st.caption("N × 4.427 = NO₃")
+        with cv3:
+            st.markdown("**📋 Довідка**")
+            st.info("""
+Молярні маси:
+- N = 14.007 г/моль
+- NO₃⁻ = 62.004 г/моль
+- Коеф. = 14.007 / 62.004 = **0.2259**
+
+Типові значення:
+- NO₃ 10 мг/л = N 2.26 мг/л
+- NO₃ 20 мг/л = N 4.52 мг/л
+- NO₃ 40 мг/л = N 9.03 мг/л
+            """)
+
+    with conv_tab2:
+        cp1, cp2, cp3 = st.columns(3)
+        with cp1:
+            st.markdown("**PO₄ → P**")
+            po4_input = st.number_input("PO₄ (мг/л)", value=1.0, step=0.05, format="%.3f", key="conv_po4_in")
+            p_result  = po4_input * 0.3261
+            st.metric("P (мг/л)", f"{p_result:.4f}")
+            st.caption("PO₄ × 0.3261 = P")
+        with cp2:
+            st.markdown("**P → PO₄**")
+            p_input    = st.number_input("P (мг/л)", value=0.3, step=0.01, format="%.3f", key="conv_p_in")
+            po4_result = p_input * 3.066
+            st.metric("PO₄ (мг/л)", f"{po4_result:.4f}")
+            st.caption("P × 3.066 = PO₄")
+        with cp3:
+            st.markdown("**📋 Довідка**")
+            st.info("""
+Молярні маси:
+- P = 30.974 г/моль
+- PO₄³⁻ = 94.971 г/моль
+- Коеф. = 30.974 / 94.971 = **0.3261**
+
+Типові значення:
+- PO₄ 0.5 мг/л = P 0.163 мг/л
+- PO₄ 1.0 мг/л = P 0.326 мг/л
+- PO₄ 2.0 мг/л = P 0.652 мг/л
+            """)
+
+# --- АНАЛІЗ МІЖ ДВОМА ТЕСТАМИ ---
 with st.expander("🔬 Аналіз між двома тестами", expanded=True):
     bc1, bc2 = st.columns(2)
     with bc1:
@@ -296,7 +364,7 @@ with st.expander("🔬 Аналіз між двома тестами", expanded=
                 f"{bal['invisible']:+.2f}(невидима) = {end}"
             )
             st.divider()
-
+           
 # ======================== 3. ПОТОЧНІ ПАРАМЕТРИ ========================
 st.header("📋 3. Поточні параметри води")
 st.caption("Введіть **актуальні показники тесту** на сьогодні. Ці значення є стартовою точкою для прогнозу.")
