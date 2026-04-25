@@ -14,8 +14,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-st.set_page_config(page_title="Toxicode Aquarium V14", layout="wide")
-st.title("🌿 Toxicode Aquarium System V14 — Допомога для Акваріуміста")
+st.set_page_config(page_title="Toxicode Aquarium V15", layout="wide")
+st.title("🌿 Toxicode Aquarium System V15 — Допомога для Акваріуміста")
 
 # ======================== ІНІЦІАЛІЗАЦІЯ ========================
 if 'history' not in st.session_state:
@@ -121,10 +121,12 @@ with st.sidebar:
     st.subheader("🔬 Розширені налаштування")
     custom_redfield = st.slider("Бажана N:P пропорція", 5, 30, 15)
 
-    po4_unit   = st.radio("Тест показує:", ["PO4 (фосфат)", "P (фосфор)"], horizontal=True)
-    po4_factor = 3.07 if po4_unit == "P (фосфор)" else 1.0
+    st.markdown("**📌 Що показує ваш тест на фосфор?**")
+    st.caption("Більшість крапельних тестів (JBL, Sera, API) показують PO4. Тести Salifert, Hanna показують P.")
+    po4_unit   = st.radio("", ["PO4 — фосфат (більшість тестів)", "P — фосфор (Salifert, Hanna, UHF)"], horizontal=False, key="po4_unit_radio")
+    po4_factor = 3.07 if "фосфор" in po4_unit else 1.0
     if po4_factor != 1.0:
-        st.caption("⚠️ P × 3.07 = PO4 — перерахунок автоматичний")
+        st.info("✅ Режим P→PO4 увімкнено. Вводьте значення P — програма автоматично перерахує в PO4 (×3.07).")
 
     co2_min_opt = st.slider("CO₂ мін (мг/л)", 0, 100, 25)
     co2_max_opt = st.slider("CO₂ макс (мг/л)", 0, 100, 45)
@@ -137,6 +139,24 @@ if st.session_state.alerts:
     if st.button("✖ Закрити сповіщення"):
         st.session_state.alerts = []
         st.rerun()
+
+# ПАТЧ 4: швидкий статус вгорі — щоб не гортати до блоку 10
+if st.session_state.last_params:
+    lp = st.session_state.last_params
+    ts = st.session_state.history[-1]['timestamp'] if st.session_state.history else ""
+    st.caption(f"📅 Останній збережений тест: {ts}")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("NO3 — нітрат", f"{lp['no3']:.1f} мг/л",
+              delta="✅ норма" if 5 <= lp['no3'] <= 30 else "⚠️ поза нормою",
+              delta_color="off" if 5 <= lp['no3'] <= 30 else "inverse")
+    q2.metric("PO4 — фосфат", f"{lp['po4']:.2f} мг/л",
+              delta="✅ норма" if 0.2 <= lp['po4'] <= 1.5 else "⚠️ поза нормою",
+              delta_color="off" if 0.2 <= lp['po4'] <= 1.5 else "inverse")
+    q3.metric("K — калій", f"{lp['k']:.1f} мг/л")
+    q4.metric("CO₂", f"{lp['co2']:.1f} мг/л",
+              delta="✅ норма" if co2_min_opt <= lp['co2'] <= co2_max_opt else "⚠️ поза нормою",
+              delta_color="off" if co2_min_opt <= lp['co2'] <= co2_max_opt else "inverse")
+    st.divider()
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
 st.header("💎 1. Ремінералізатор")
@@ -370,18 +390,18 @@ st.header("📋 3. Поточні параметри води")
 st.caption("Введіть **актуальні показники тесту** на сьогодні. Ці значення є стартовою точкою для прогнозу.")
 col1, col2, col3 = st.columns(3)
 with col1:
-    no3_now = st.number_input("NO3 (мг/л)", value=10.0, step=0.5, format="%.1f")
-    if po4_unit == "P (фосфор)":
-        po4_raw = st.number_input("P (мг/л)", value=0.3, step=0.05, format="%.2f")
+    no3_now = st.number_input("NO3 — нітрат (мг/л)", value=10.0, step=0.5, format="%.1f")
+    if "фосфор" in po4_unit:
+        po4_raw = st.number_input("P — фосфор (мг/л)", value=0.3, step=0.05, format="%.2f")
         po4_now = round(po4_raw * po4_factor, 3)
-        st.caption(f"PO4 = {po4_now:.2f} мг/л")
+        st.caption(f"→ PO4 = {po4_now:.2f} мг/л (P × 3.07)")
     else:
-        po4_now = st.number_input("PO4 (мг/л)", value=0.5, step=0.05, format="%.2f")
-    k_now    = st.number_input("K (мг/л)",   value=10.0, step=0.5, format="%.1f")
-    base_tds = st.number_input("TDS",         value=150.0, step=5.0, format="%.0f")
+        po4_now = st.number_input("PO4 — фосфат (мг/л)", value=0.5, step=0.05, format="%.2f")
+    k_now    = st.number_input("K — калій (мг/л)",   value=10.0, step=0.5, format="%.1f")
+    base_tds = st.number_input("TDS — загальна мінералізація", value=150.0, step=5.0, format="%.0f")
 with col2:
-    gh = st.number_input("GH (°dH)", value=6, step=1)
-    kh = st.number_input("KH (°dH)", value=2, step=1)
+    gh = st.number_input("GH — загальна жорсткість (°dH)", value=6, step=1)
+    kh = st.number_input("KH — карбонатна жорсткість (°dH)", value=2, step=1)
     st.divider()
     st.caption("🌬️ CO₂ контроль")
     ph_morning = st.number_input("pH ранок (до CO₂)",  value=7.2, step=0.1, format="%.1f")
@@ -466,20 +486,23 @@ st.header("🧪 5. Щоденне дозування добрив")
 st.caption("Введіть **щоденну** дозу. Ці значення використовуються в прогнозі для кожного дня.")
 cd_n, cd_p, cd_k = st.columns(3)
 with cd_n:
-    conc_n_daily      = st.number_input("N (NO3) г/л", value=50.0, step=5.0, key="conc_n_daily")
+    conc_n_daily      = st.number_input("N (NO3 — нітрат) г/л", value=50.0, step=5.0, key="conc_n_daily",
+                                         help="Концентрація вашого азотного розчину. Напр. KNO3 розчин 50г/л")
     current_dose_n_ml = st.number_input("Доза N мл/день", value=0.0, step=1.0, key="dose_n_daily")
     add_no3_daily     = current_dose_n_ml * conc_n_daily / tank_vol if tank_vol > 0 else 0
-    st.caption(f"→ +{add_no3_daily:.2f} мг/л NO3/день")
+    st.caption(f"→ +{add_no3_daily:.2f} мг/л NO3 (нітрату) в акваріумі щодня")
 with cd_p:
-    conc_p_daily      = st.number_input("P (PO4) г/л", value=5.0, step=0.5, key="conc_p_daily")
+    conc_p_daily      = st.number_input("P (PO4 — фосфат) г/л", value=5.0, step=0.5, key="conc_p_daily",
+                                         help="Концентрація вашого фосфорного розчину. Напр. KH2PO4 розчин 5г/л")
     current_dose_p_ml = st.number_input("Доза P мл/день", value=0.0, step=0.5, key="dose_p_daily")
     add_po4_daily     = current_dose_p_ml * conc_p_daily / tank_vol if tank_vol > 0 else 0
-    st.caption(f"→ +{add_po4_daily:.3f} мг/л PO4/день")
+    st.caption(f"→ +{add_po4_daily:.3f} мг/л PO4 (фосфату) в акваріумі щодня")
 with cd_k:
-    conc_k_daily      = st.number_input("K г/л", value=20.0, step=2.0, key="conc_k_daily")
+    conc_k_daily      = st.number_input("K — калій г/л", value=20.0, step=2.0, key="conc_k_daily",
+                                         help="Концентрація вашого калійного розчину. Напр. K2SO4 розчин 20г/л")
     current_dose_k_ml = st.number_input("Доза K мл/день", value=0.0, step=1.0, key="dose_k_daily")
     add_k_daily       = current_dose_k_ml * conc_k_daily / tank_vol if tank_vol > 0 else 0
-    st.caption(f"→ +{add_k_daily:.2f} мг/л K/день")
+    st.caption(f"→ +{add_k_daily:.2f} мг/л K (калію) в акваріумі щодня")
 
 # FIX 3: стартова точка прогнозу = після підміни (ДЕНЬ 0)
 # Щоденне дозування починає діяти з дня 1, тому початок = after (до першого добрива)
@@ -719,6 +742,48 @@ if recs:
 else:
     st.success("✅ Всі параметри в оптимальному діапазоні!")
 
+# ПАТЧ 2: «Що зробити сьогодні» — простий план без термінів
+st.divider()
+st.subheader("✅ Що зробити сьогодні")
+plan_steps = []
+
+if change_l > 0:
+    plan_steps.append(f"Зробіть підміну **{change_l:.0f} л** підготовленої води")
+
+if add_n_after > 0 or add_p_after > 0 or add_k_after > 0:
+    ferts = []
+    if add_n_after > 0: ferts.append(f"N: {dose_after_n_ml:.0f} мл")
+    if add_p_after > 0: ferts.append(f"P: {dose_after_p_ml:.0f} мл")
+    if add_k_after > 0: ferts.append(f"K: {dose_after_k_ml:.0f} мл")
+    plan_steps.append(f"Після підміни внесіть разово: **{', '.join(ferts)}**")
+
+if current_dose_n_ml > 0 or current_dose_p_ml > 0 or current_dose_k_ml > 0:
+    doses = []
+    if current_dose_n_ml > 0: doses.append(f"N: {current_dose_n_ml:.0f} мл")
+    if current_dose_p_ml > 0: doses.append(f"P: {current_dose_p_ml:.1f} мл")
+    if current_dose_k_ml > 0: doses.append(f"K: {current_dose_k_ml:.0f} мл")
+    plan_steps.append(f"Щоденне дозування: **{', '.join(doses)}**")
+
+if co2_val < co2_min_opt:
+    plan_steps.append(f"Збільшіть подачу CO₂ — зараз {co2_val:.1f} мг/л, потрібно від {co2_min_opt} мг/л")
+elif co2_val > co2_max_opt:
+    plan_steps.append(f"⚠️ Терміново зменшіть CO₂ — {co2_val:.1f} мг/л небезпечно для риб!")
+
+if act_n != "без змін" or act_p != "без змін" or act_k != "без змін":
+    corrections = []
+    if act_n != "без змін": corrections.append(f"N: {current_dose_n_ml:.1f}→**{new_n:.1f} мл/день**")
+    if act_p != "без змін": corrections.append(f"P: {current_dose_p_ml:.2f}→**{new_p:.2f} мл/день**")
+    if act_k != "без змін": corrections.append(f"K: {current_dose_k_ml:.1f}→**{new_k:.1f} мл/день**")
+    plan_steps.append(f"Скоригуйте щоденну дозу (поступово, до 20% за раз): {', '.join(corrections)}")
+
+plan_steps.append(f"Зробіть новий тест через **{days} днів** і порівняйте з прогнозом")
+
+if plan_steps:
+    for i, step in enumerate(plan_steps, 1):
+        st.markdown(f"**{i}.** {step}")
+else:
+    st.success("Сьогодні нічого критичного — дотримуйтесь поточного режиму.")
+
 # ======================== 9. ПЛАН КОРЕКЦІЇ ========================
 st.divider()
 st.header("📅 9. План корекції дозування")
@@ -926,8 +991,9 @@ with st.expander("📜 12. Історія параметрів"):
     else:
         st.info("Немає збережених даних.")
 
-# ======================== 13. ТЕПЛОВА КАРТА ========================
-with st.expander("🌡️ 13. Теплова карта прогнозу"):
+# ПАТЧ 3: блоки 13 і 14 об'єднані в один закритий expander
+with st.expander("🔍 13. Деталі: теплова карта і валідація", expanded=False):
+    st.subheader("🌡️ Теплова карта прогнозу")
     k_r    = get_k_range(gh)
     limits = {'NO3': (5, 30), 'PO4': (0.2, 1.5), 'K': (k_r['opt_low'], k_r['opt_high'])}
     hm_em  = {}
@@ -945,19 +1011,19 @@ with st.expander("🌡️ 13. Теплова карта прогнозу"):
     st.caption("Статус кожного елемента по днях прогнозу:")
     st.dataframe(df_em, use_container_width=True)
 
-# ======================== 14. ВАЛІДАЦІЯ ========================
-with st.expander("🛡️ 14. Валідація та безпека"):
+    st.divider()
+    st.subheader("🛡️ Валідація та безпека")
     st.markdown(f"""
 | Параметр | Значення | Норма | Статус |
 |----------|----------|-------|--------|
-| NO3 | {final_no3:.1f} мг/л | 5–40 | {"✅" if 5 <= final_no3 <= 40 else "⚠️"} |
-| PO4 | {final_po4:.2f} мг/л | 0.2–2.5 | {"✅" if 0.2 <= final_po4 <= 2.5 else "⚠️"} |
+| NO3 — нітрат | {final_no3:.1f} мг/л | 5–40 | {"✅" if 5 <= final_no3 <= 40 else "⚠️"} |
+| PO4 — фосфат | {final_po4:.2f} мг/л | 0.2–2.5 | {"✅" if 0.2 <= final_po4 <= 2.5 else "⚠️"} |
 | CO₂ | {co2_val:.1f} мг/л | {co2_min_opt}–{co2_max_opt} | {"✅" if co2_min_opt <= co2_val <= co2_max_opt else "⚠️"} |
 | K/GH | {k_gh_ratio:.2f} | 1.5–2.5 | {"✅" if 1.5 <= k_gh_ratio <= 2.5 else "⚠️"} |
     """)
-    if final_no3 > 40:          st.error("🚨 NO3 > 40 — зменшіть N")
-    if final_po4 > 2.5:         st.warning("⚠️ PO4 > 2.5 — ризик водоростей")
-    if co2_val > co2_max_opt:   st.error("🚨 CO₂ надлишок — зменшіть подачу")
+    if final_no3 > 40:           st.error("🚨 NO3 > 40 — зменшіть N")
+    if final_po4 > 2.5:          st.warning("⚠️ PO4 > 2.5 — ризик водоростей")
+    if co2_val > co2_max_opt:    st.error("🚨 CO₂ надлишок — зменшіть подачу")
     if final_k > k_range['max']: st.warning("⚠️ K > максимуму — ризик блокування Ca/Mg")
 
-st.caption("⚡ Toxicode V14 | Реальний баланс | Симулятор NO3/PO4/K | Інструкція ремінералізатора | Прогноз без суперечностей")
+st.caption("⚡ Toxicode V15 | Швидкий статус | Підписи термінів | План на сьогодні | Спрощена навігація")
