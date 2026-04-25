@@ -769,12 +769,16 @@ if co2_val < co2_min_opt:
 elif co2_val > co2_max_opt:
     plan_steps.append(f"⚠️ Терміново зменшіть CO₂ — {co2_val:.1f} мг/л небезпечно для риб!")
 
-if act_n != "без змін" or act_p != "без змін" or act_k != "без змін":
-    corrections = []
-    if act_n != "без змін": corrections.append(f"N: {current_dose_n_ml:.1f}→**{new_n:.1f} мл/день**")
-    if act_p != "без змін": corrections.append(f"P: {current_dose_p_ml:.2f}→**{new_p:.2f} мл/день**")
-    if act_k != "без змін": corrections.append(f"K: {current_dose_k_ml:.1f}→**{new_k:.1f} мл/день**")
-    plan_steps.append(f"Скоригуйте щоденну дозу (поступово, до 20% за раз): {', '.join(corrections)}")
+    # Проста перевірка чи треба коригувати дозу (без dose_correction — вона в блоці 9)
+    needs_correction = (
+        abs(f_end["NO3"] - target_no3) > 2 or
+        abs(f_end["PO4"] - target_po4) > 0.3 or
+        abs(f_end["K"]   - target_k)   > 3
+    )
+    if needs_correction:
+        plan_steps.append(
+            f"Скоригуйте щоденну дозу згідно з **розділом 9** нижче (поступово, до 20% за раз)"
+        )
 
 plan_steps.append(f"Зробіть новий тест через **{days} днів** і порівняйте з прогнозом")
 
