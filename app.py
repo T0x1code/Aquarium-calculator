@@ -1,5 +1,5 @@
 """
-Toxicode Aquarium System V15 — всі покращення + самоміси:
+Toxicode Aquarium System V14 — виправлення за фідбеком:
 1. Інструкція в ремінералізаторі повернута
 2. Калькулятор балансу — без змін (працює добре)
 3. Блоки 3-5: прозора стартова точка прогнозу з поясненням
@@ -24,8 +24,6 @@ if 'alerts' not in st.session_state:
     st.session_state.alerts = []
 if 'last_params' not in st.session_state:
     st.session_state.last_params = None
-if 'recipes' not in st.session_state:
-    st.session_state.recipes = {}
 
 # ======================== HELPER FUNCTIONS ========================
 def clamp(v, lo, hi):
@@ -159,313 +157,6 @@ if st.session_state.last_params:
               delta="✅ норма" if co2_min_opt <= lp['co2'] <= co2_max_opt else "⚠️ поза нормою",
               delta_color="off" if co2_min_opt <= lp['co2'] <= co2_max_opt else "inverse")
     st.divider()
-
-
-# ======================== 0. САМОМІСИ — КАЛЬКУЛЯТОР ДОБРИВ ========================
-st.header("🧬 0. Калькулятор самомісів")
-st.caption(
-    "Розрахунок концентрації розчинів і доз для самостійно приготованих добрив. "
-    "Збережені рецепти показують концентрацію г/л і добову дозу мл/день — "
-    "ці значення вводьте у блоки 4 і 5."
-)
-
-SALTS = {
-    "KNO3 — калій нітрат":              {"formula": "KNO3",         "elements": {"NO3": 61.32/101.10, "K": 39.10/101.10}},
-    "Ca(NO3)2·4H2O — кальцій нітрат":  {"formula": "Ca(NO3)2·4H2O","elements": {"NO3": 2*62.00/236.15, "Ca": 40.08/236.15}},
-    "KH2PO4 — монокалій фосфат":        {"formula": "KH2PO4",       "elements": {"PO4": 94.97/136.09, "K": 39.10/136.09}},
-    "K2SO4 — калій сульфат":            {"formula": "K2SO4",        "elements": {"K": 2*39.10/174.26, "SO4": 96.06/174.26}},
-    "MgSO4·7H2O — магній сульфат":     {"formula": "MgSO4·7H2O",   "elements": {"Mg": 24.31/246.47,  "SO4": 96.06/246.47}},
-    "K2CO3 — калій карбонат":           {"formula": "K2CO3",        "elements": {"K": 2*39.10/138.21}},
-    "KHCO3 — калій бікарбонат":         {"formula": "KHCO3",        "elements": {"K": 39.10/100.12}},
-    "Інша сіль (вручну)":               {"formula": "custom",       "elements": {}},
-}
-
-mix_tab1, mix_tab2, mix_tab3, mix_tab4 = st.tabs([
-    "🧪 Грами солі → концентрація",
-    "📐 Ціль → скільки зважити",
-    "📋 Мої рецепти",
-    "🧫 Змішаний рецепт (кілька солей)",
-])
-
-# ── Вкладка 1: грами → концентрація ──────────────────────────
-with mix_tab1:
-    st.caption("Введіть скільки солі розчиняєте і в якому об'ємі — отримаєте концентрацію г/л для блоків 4/5.")
-    m1c1, m1c2 = st.columns(2)
-    with m1c1:
-        salt_name  = st.selectbox("Оберіть сіль:", list(SALTS.keys()), key="m1_salt")
-        salt       = SALTS[salt_name]
-        if salt["formula"] == "custom":
-            custom_elem   = st.text_input("Елемент (напр. Fe):", value="Fe", key="m1_ce")
-            custom_pct    = st.number_input("Вміст елемента (%)", value=10.0, step=0.1, key="m1_cp")
-            elem_name     = custom_elem
-            elem_fraction = custom_pct / 100
-        else:
-            elem_name     = list(salt["elements"].keys())[0]
-            elem_fraction = list(salt["elements"].values())[0]
-            st.caption(f"Формула: **{salt['formula']}**")
-            if len(salt["elements"]) > 1:
-                others = [f"{k}: {v*100:.1f}%" for k, v in list(salt["elements"].items())[1:]]
-                st.caption(f"Також містить: {', '.join(others)}")
-        salt_grams = st.number_input("Грам солі:", value=10.0, step=0.5, format="%.2f", key="m1_g")
-        water_ml   = st.number_input("Об'єм розчину (мл):", value=500, step=50, key="m1_vol")
-    with m1c2:
-        if water_ml > 0 and elem_fraction > 0:
-            conc_g_l   = salt_grams / (water_ml / 1000)
-            elem_g_l   = conc_g_l * elem_fraction
-            st.success(f"""
-**Результат для {water_ml} мл:**
-🧂 Концентрація солі: **{conc_g_l:.2f} г/л**
-⚗️ {elem_name} у розчині: **{elem_g_l*1000:.1f} мг/л** розчину
-            """)
-            st.divider()
-            st.markdown(f"**Доза для акваріума {tank_vol:.0f} л:**")
-            target_mgl = st.number_input(f"Хочу внести {elem_name} (мг/л):", value=1.0, step=0.1, key="m1_tgt")
-            if elem_g_l > 0:
-                dose_ml = target_mgl * tank_vol / (elem_g_l * 1000)
-                st.metric(f"Доза для +{target_mgl} мг/л {elem_name}:", f"{dose_ml:.2f} мл")
-            st.divider()
-            rname1 = st.text_input("Назва рецепту:", placeholder="Напр. Мій N-розчин KNO3", key="m1_rn")
-            if st.button("💾 Зберегти рецепт", key="m1_save"):
-                if rname1:
-                    st.session_state.recipes[rname1] = {
-                        "salt": salt_name, "grams": salt_grams, "water_ml": water_ml,
-                        "conc_g_l": round(conc_g_l, 3), "elem": elem_name,
-                        "elem_g_l": round(elem_g_l, 5),
-                    }
-                    st.success(f"✅ Рецепт «{rname1}» збережено!")
-                    st.rerun()
-                else:
-                    st.warning("Введіть назву рецепту")
-        else:
-            st.warning("Введіть об'єм і перевірте параметри")
-
-# ── Вкладка 2: ціль → грами солі ─────────────────────────────
-with mix_tab2:
-    st.caption("Введіть яку концентрацію або дозу хочете — програма розрахує скільки грам зважити.")
-    m2c1, m2c2 = st.columns(2)
-    with m2c1:
-        salt_name2  = st.selectbox("Оберіть сіль:", list(SALTS.keys()), key="m2_salt")
-        salt2       = SALTS[salt_name2]
-        if salt2["formula"] == "custom":
-            custom_elem2   = st.text_input("Елемент:", value="Fe", key="m2_ce")
-            custom_pct2    = st.number_input("Вміст елемента (%)", value=10.0, step=0.1, key="m2_cp")
-            elem_name2     = custom_elem2
-            elem_fraction2 = custom_pct2 / 100
-        else:
-            elem_name2     = list(salt2["elements"].keys())[0]
-            elem_fraction2 = list(salt2["elements"].values())[0]
-            st.caption(f"Формула: **{salt2['formula']}**")
-        water_ml2 = st.number_input("Об'єм розчину (мл):", value=500, step=50, key="m2_vol")
-        st.divider()
-        mode2 = st.radio("Задаю ціль як:", ["Концентрацію солі (г/л)", f"мг/л {elem_name2} на 1 мл дози в 1 л акваріума"], key="m2_mode")
-        if "г/л" in mode2:
-            target_conc = st.number_input("Концентрація солі (г/л):", value=50.0, step=5.0, key="m2_tc")
-            salt_g2     = target_conc * (water_ml2 / 1000)
-            elem_g_l2   = target_conc * elem_fraction2
-        else:
-            target_dose_conc = st.number_input(f"{elem_name2} мг/л на 1 мл у 1 л:", value=1.0, step=0.1, key="m2_tdc")
-            elem_g_l2   = target_dose_conc
-            target_conc = elem_g_l2 / elem_fraction2 if elem_fraction2 > 0 else 0
-            salt_g2     = target_conc * (water_ml2 / 1000)
-    with m2c2:
-        if water_ml2 > 0 and elem_fraction2 > 0:
-            st.success(f"""
-**Для {water_ml2} мл розчину зважте:**
-🧂 **{salt_g2:.3f} г** {salt2['formula'] if salt2['formula'] != 'custom' else ''}
-⚗️ Концентрація: **{target_conc:.2f} г/л**
-💧 {elem_name2}: **{elem_g_l2*1000:.1f} мг/л** розчину
-            """)
-            st.divider()
-            st.markdown(f"**Доза для {tank_vol:.0f} л:**")
-            dose_tgt2 = st.number_input(f"Внести {elem_name2} (мг/л):", value=1.0, step=0.1, key="m2_dt")
-            if elem_g_l2 > 0:
-                ml2 = dose_tgt2 * tank_vol / (elem_g_l2 * 1000)
-                st.metric(f"Доза для +{dose_tgt2} мг/л:", f"{ml2:.2f} мл")
-            st.divider()
-            rname2 = st.text_input("Назва рецепту:", placeholder="Напр. Розчин K 500мл", key="m2_rn")
-            if st.button("💾 Зберегти рецепт", key="m2_save"):
-                if rname2:
-                    st.session_state.recipes[rname2] = {
-                        "salt": salt_name2, "grams": round(salt_g2, 3), "water_ml": water_ml2,
-                        "conc_g_l": round(target_conc, 3), "elem": elem_name2,
-                        "elem_g_l": round(elem_g_l2, 5),
-                    }
-                    st.success(f"✅ Рецепт «{rname2}» збережено!")
-                    st.rerun()
-                else:
-                    st.warning("Введіть назву рецепту")
-
-# ── Вкладка 3: збережені рецепти ─────────────────────────────
-with mix_tab3:
-    if st.session_state.recipes:
-        for rname, r in list(st.session_state.recipes.items()):
-            with st.expander(f"📌 {rname}  —  {r['elem']}  ({r['salt'].split('—')[0].strip()})", expanded=False):
-                rc1, rc2, rc3 = st.columns(3)
-                rc1.metric("Сіль (г)", f"{r['grams']:.3f}")
-                rc1.caption(f"у {r['water_ml']} мл води")
-                rc2.metric("Концентрація", f"{r['conc_g_l']:.2f} г/л")
-                rc3.metric(f"{r['elem']} у розчині", f"{r['elem_g_l']*1000:.2f} мг/л")
-                st.markdown("**Добова доза для акваріума:**")
-                dc1, dc2 = st.columns(2)
-                daily_tgt = dc1.number_input(
-                    f"Вносити {r['elem']} (мг/л/день):", value=1.0, step=0.1, key=f"dt_{rname}"
-                )
-                if r["elem_g_l"] > 0:
-                    ml_day = daily_tgt * tank_vol / (r["elem_g_l"] * 1000)
-                    dc2.metric("Доза мл/день:", f"{ml_day:.2f} мл")
-                    dc2.caption(f"Концентрація для блоків 4/5: **{r['conc_g_l']:.2f} г/л**")
-                col_del, col_hint = st.columns(2)
-                if col_del.button("🗑️ Видалити", key=f"del_{rname}"):
-                    del st.session_state.recipes[rname]
-                    st.rerun()
-                col_hint.caption("👆 Використовуйте концентрацію г/л і дозу мл/день у блоках 4 і 5")
-        st.divider()
-        if st.button("🗑️ Очистити всі рецепти", key="clear_recipes"):
-            st.session_state.recipes = {}
-            st.rerun()
-    else:
-        st.info("Ще немає збережених рецептів.")
-        st.markdown("""
-**Як користуватись:**
-1. Вкладка «Грами солі → концентрація» — введіть скільки грам розчиняєте, збережіть рецепт
-2. Вкладка «Ціль → скільки зважити» — введіть цільову концентрацію, збережіть рецепт
-3. Тут побачите **концентрацію г/л** і **добову дозу мл/день** для вашого акваріума
-4. Ці два числа вводьте в **блок 4** (після підміни) і **блок 5** (щоденно)
-        """)
-
-
-# ── Вкладка 4: змішаний рецепт ───────────────────────────────
-with mix_tab4:
-    st.caption(
-        "Додайте до 6 солей — програма підсумує всі елементи і покаже "
-        "підсумковий склад розчину та дозу для акваріума."
-    )
-
-    mix4_vol = st.number_input("Об'єм готового розчину (мл):", value=500, step=50, key="m4_vol")
-    mix4_name = st.text_input("Назва суміші:", placeholder="Напр. Мій нітрат NPK", key="m4_name")
-    n_rows = st.slider("Кількість солей у рецепті:", 1, 6, 3, key="m4_rows")
-
-    st.divider()
-    st.markdown("**Склад рецепту:**")
-
-    # Заголовок таблиці
-    hc1, hc2, hc3 = st.columns([3, 1, 2])
-    hc1.caption("Сіль")
-    hc2.caption("Грам")
-    hc3.caption("Дає в розчин")
-
-    # Накопичувач елементів: {elem: г_у_розчині}
-    mix4_totals = {}
-
-    for i in range(n_rows):
-        rc1, rc2, rc3 = st.columns([3, 1, 2])
-        with rc1:
-            s_name = st.selectbox(
-                f"Сіль {i+1}:",
-                ["— не обрано —"] + list(SALTS.keys()),
-                key=f"m4_s{i}"
-            )
-        with rc2:
-            s_grams = st.number_input(
-                "г", value=0.0, step=0.5, format="%.2f",
-                key=f"m4_g{i}", label_visibility="collapsed"
-            )
-        with rc3:
-            if s_name != "— не обрано —" and s_grams > 0 and mix4_vol > 0:
-                salt_i = SALTS[s_name]
-                if salt_i["formula"] == "custom":
-                    st.caption("(ручна сіль — вкажіть у вкладці 1)")
-                else:
-                    conc_i = s_grams / (mix4_vol / 1000)  # г/л солі
-                    parts = []
-                    for elem, frac in salt_i["elements"].items():
-                        mg_l = conc_i * frac * 1000  # мг/л елемента у розчині
-                        parts.append(f"{elem}: {mg_l:.1f} мг/л")
-                        mix4_totals[elem] = mix4_totals.get(elem, 0) + mg_l
-                    st.caption(" | ".join(parts))
-            else:
-                st.caption("—")
-
-    st.divider()
-
-    if mix4_totals and mix4_vol > 0:
-        st.subheader("📊 Підсумковий склад розчину")
-
-        # Показуємо всі елементи
-        elem_cols = st.columns(min(len(mix4_totals), 4))
-        for idx, (elem, mg_l) in enumerate(mix4_totals.items()):
-            elem_cols[idx % 4].metric(f"{elem} (мг/л розч.)", f"{mg_l:.2f}")
-
-        st.divider()
-        st.subheader(f"💉 Доза для акваріума {tank_vol:.0f} л")
-        st.caption("Скільки мл цього розчину додати щоб підняти елемент на потрібну кількість:")
-
-        # Вибираємо головний елемент для дози
-        main_elem = st.selectbox(
-            "Розрахувати дозу по елементу:",
-            list(mix4_totals.keys()),
-            key="m4_main_elem"
-        )
-        target_rise = st.number_input(
-            f"Підняти {main_elem} на (мг/л):", value=1.0, step=0.1, key="m4_rise"
-        )
-
-        main_mg_l = mix4_totals[main_elem]  # мг/л цього елемента в 1 л розчину
-        if main_mg_l > 0:
-            # dose_ml × (main_mg_l / 1000) г/мл × 1000 мг/г / tank_vol = target_rise
-            # dose_ml = target_rise × tank_vol / main_mg_l
-            dose_ml4 = target_rise * tank_vol / main_mg_l
-            st.metric(
-                f"Доза для +{target_rise} мг/л {main_elem} у {tank_vol:.0f} л:",
-                f"{dose_ml4:.2f} мл"
-            )
-            # Показуємо що ще потрапить в акваріум при цій дозі
-            st.markdown("**При цій дозі також потрапить:**")
-            side_parts = []
-            for elem, mg_l in mix4_totals.items():
-                if elem != main_elem:
-                    side_rise = dose_ml4 * mg_l / tank_vol
-                    side_parts.append(f"{elem}: +{side_rise:.3f} мг/л")
-            if side_parts:
-                st.caption(" | ".join(side_parts))
-
-            # Концентрація для блоку 5 (г/л по головному елементу)
-            total_salt_g = sum(
-                st.session_state.get(f"m4_g{i}", 0) or 0
-                for i in range(n_rows)
-            )
-            conc_for_block5 = total_salt_g / (mix4_vol / 1000) if mix4_vol > 0 else 0
-            st.info(
-                f"💡 Для блоку 5: концентрація суміші = **{conc_for_block5:.2f} г/л**, "
-                f"доза = **{dose_ml4:.2f} мл/день** (якщо вносите щодня)"
-            )
-
-        st.divider()
-        # Зберегти як рецепт
-        if st.button("💾 Зберегти як рецепт", key="m4_save"):
-            if mix4_name and main_mg_l > 0:
-                # Зберігаємо по головному елементу
-                main_frac = main_mg_l / 1000  # г/л головного елемента
-                total_g = sum(
-                    (st.session_state.get(f"m4_g{i}") or 0)
-                    for i in range(n_rows)
-                )
-                st.session_state.recipes[mix4_name] = {
-                    "salt": f"Суміш {n_rows} солей",
-                    "grams": round(total_g, 3),
-                    "water_ml": mix4_vol,
-                    "conc_g_l": round(conc_for_block5, 3),
-                    "elem": main_elem,
-                    "elem_g_l": round(main_frac, 5),
-                    "mix_totals": mix4_totals,
-                }
-                st.success(f"✅ Рецепт «{mix4_name}» збережено в «Мої рецепти»!")
-                st.rerun()
-            else:
-                st.warning("Введіть назву і додайте хоча б одну сіль з ненульовою кількістю")
-    else:
-        st.info("Додайте солі і кількість вище щоб побачити результат.")
-
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
 st.header("💎 1. Ремінералізатор")
@@ -1078,16 +769,16 @@ if co2_val < co2_min_opt:
 elif co2_val > co2_max_opt:
     plan_steps.append(f"⚠️ Терміново зменшіть CO₂ — {co2_val:.1f} мг/л небезпечно для риб!")
 
-# Проста перевірка чи треба коригувати дозу (без dose_correction — вона в блоці 9)
-needs_correction = (
-    abs(f_end["NO3"] - target_no3) > 2 or
-    abs(f_end["PO4"] - target_po4) > 0.3 or
-    abs(f_end["K"]   - target_k)   > 3
-)
-if needs_correction:
-    plan_steps.append(
-        f"Скоригуйте щоденну дозу згідно з **розділом 9** нижче (поступово, до 20% за раз)"
+    # Проста перевірка чи треба коригувати дозу (без dose_correction — вона в блоці 9)
+    needs_correction = (
+        abs(f_end["NO3"] - target_no3) > 2 or
+        abs(f_end["PO4"] - target_po4) > 0.3 or
+        abs(f_end["K"]   - target_k)   > 3
     )
+    if needs_correction:
+        plan_steps.append(
+            f"Скоригуйте щоденну дозу згідно з **розділом 9** нижче (поступово, до 20% за раз)"
+        )
 
 plan_steps.append(f"Зробіть новий тест через **{days} днів** і порівняйте з прогнозом")
 
