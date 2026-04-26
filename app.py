@@ -180,10 +180,11 @@ SALTS = {
     "Інша сіль (вручну)":               {"formula": "custom",       "elements": {}},
 }
 
-mix_tab1, mix_tab2, mix_tab3 = st.tabs([
+mix_tab1, mix_tab2, mix_tab3, mix_tab4 = st.tabs([
     "🧪 Грами солі → концентрація",
     "📐 Ціль → скільки зважити",
     "📋 Мої рецепти",
+    "🧫 Змішаний рецепт (кілька солей)",
 ])
 
 # ── Вкладка 1: грами → концентрація ──────────────────────────
@@ -331,6 +332,139 @@ with mix_tab3:
 3. Тут побачите **концентрацію г/л** і **добову дозу мл/день** для вашого акваріума
 4. Ці два числа вводьте в **блок 4** (після підміни) і **блок 5** (щоденно)
         """)
+
+
+# ── Вкладка 4: змішаний рецепт ───────────────────────────────
+with mix_tab4:
+    st.caption(
+        "Додайте до 6 солей — програма підсумує всі елементи і покаже "
+        "підсумковий склад розчину та дозу для акваріума."
+    )
+
+    mix4_vol = st.number_input("Об'єм готового розчину (мл):", value=500, step=50, key="m4_vol")
+    mix4_name = st.text_input("Назва суміші:", placeholder="Напр. Мій нітрат NPK", key="m4_name")
+    n_rows = st.slider("Кількість солей у рецепті:", 1, 6, 3, key="m4_rows")
+
+    st.divider()
+    st.markdown("**Склад рецепту:**")
+
+    # Заголовок таблиці
+    hc1, hc2, hc3 = st.columns([3, 1, 2])
+    hc1.caption("Сіль")
+    hc2.caption("Грам")
+    hc3.caption("Дає в розчин")
+
+    # Накопичувач елементів: {elem: г_у_розчині}
+    mix4_totals = {}
+
+    for i in range(n_rows):
+        rc1, rc2, rc3 = st.columns([3, 1, 2])
+        with rc1:
+            s_name = st.selectbox(
+                f"Сіль {i+1}:",
+                ["— не обрано —"] + list(SALTS.keys()),
+                key=f"m4_s{i}"
+            )
+        with rc2:
+            s_grams = st.number_input(
+                "г", value=0.0, step=0.5, format="%.2f",
+                key=f"m4_g{i}", label_visibility="collapsed"
+            )
+        with rc3:
+            if s_name != "— не обрано —" and s_grams > 0 and mix4_vol > 0:
+                salt_i = SALTS[s_name]
+                if salt_i["formula"] == "custom":
+                    st.caption("(ручна сіль — вкажіть у вкладці 1)")
+                else:
+                    conc_i = s_grams / (mix4_vol / 1000)  # г/л солі
+                    parts = []
+                    for elem, frac in salt_i["elements"].items():
+                        mg_l = conc_i * frac * 1000  # мг/л елемента у розчині
+                        parts.append(f"{elem}: {mg_l:.1f} мг/л")
+                        mix4_totals[elem] = mix4_totals.get(elem, 0) + mg_l
+                    st.caption(" | ".join(parts))
+            else:
+                st.caption("—")
+
+    st.divider()
+
+    if mix4_totals and mix4_vol > 0:
+        st.subheader("📊 Підсумковий склад розчину")
+
+        # Показуємо всі елементи
+        elem_cols = st.columns(min(len(mix4_totals), 4))
+        for idx, (elem, mg_l) in enumerate(mix4_totals.items()):
+            elem_cols[idx % 4].metric(f"{elem} (мг/л розч.)", f"{mg_l:.2f}")
+
+        st.divider()
+        st.subheader(f"💉 Доза для акваріума {tank_vol:.0f} л")
+        st.caption("Скільки мл цього розчину додати щоб підняти елемент на потрібну кількість:")
+
+        # Вибираємо головний елемент для дози
+        main_elem = st.selectbox(
+            "Розрахувати дозу по елементу:",
+            list(mix4_totals.keys()),
+            key="m4_main_elem"
+        )
+        target_rise = st.number_input(
+            f"Підняти {main_elem} на (мг/л):", value=1.0, step=0.1, key="m4_rise"
+        )
+
+        main_mg_l = mix4_totals[main_elem]  # мг/л цього елемента в 1 л розчину
+        if main_mg_l > 0:
+            # dose_ml × (main_mg_l / 1000) г/мл × 1000 мг/г / tank_vol = target_rise
+            # dose_ml = target_rise × tank_vol / main_mg_l
+            dose_ml4 = target_rise * tank_vol / main_mg_l
+            st.metric(
+                f"Доза для +{target_rise} мг/л {main_elem} у {tank_vol:.0f} л:",
+                f"{dose_ml4:.2f} мл"
+            )
+            # Показуємо що ще потрапить в акваріум при цій дозі
+            st.markdown("**При цій дозі також потрапить:**")
+            side_parts = []
+            for elem, mg_l in mix4_totals.items():
+                if elem != main_elem:
+                    side_rise = dose_ml4 * mg_l / tank_vol
+                    side_parts.append(f"{elem}: +{side_rise:.3f} мг/л")
+            if side_parts:
+                st.caption(" | ".join(side_parts))
+
+            # Концентрація для блоку 5 (г/л по головному елементу)
+            total_salt_g = sum(
+                st.session_state.get(f"m4_g{i}", 0) or 0
+                for i in range(n_rows)
+            )
+            conc_for_block5 = total_salt_g / (mix4_vol / 1000) if mix4_vol > 0 else 0
+            st.info(
+                f"💡 Для блоку 5: концентрація суміші = **{conc_for_block5:.2f} г/л**, "
+                f"доза = **{dose_ml4:.2f} мл/день** (якщо вносите щодня)"
+            )
+
+        st.divider()
+        # Зберегти як рецепт
+        if st.button("💾 Зберегти як рецепт", key="m4_save"):
+            if mix4_name and main_mg_l > 0:
+                # Зберігаємо по головному елементу
+                main_frac = main_mg_l / 1000  # г/л головного елемента
+                total_g = sum(
+                    (st.session_state.get(f"m4_g{i}") or 0)
+                    for i in range(n_rows)
+                )
+                st.session_state.recipes[mix4_name] = {
+                    "salt": f"Суміш {n_rows} солей",
+                    "grams": round(total_g, 3),
+                    "water_ml": mix4_vol,
+                    "conc_g_l": round(conc_for_block5, 3),
+                    "elem": main_elem,
+                    "elem_g_l": round(main_frac, 5),
+                    "mix_totals": mix4_totals,
+                }
+                st.success(f"✅ Рецепт «{mix4_name}» збережено в «Мої рецепти»!")
+                st.rerun()
+            else:
+                st.warning("Введіть назву і додайте хоча б одну сіль з ненульовою кількістю")
+    else:
+        st.info("Додайте солі і кількість вище щоб побачити результат.")
 
 
 # ======================== 1. РЕМІНЕРАЛІЗАТОР ========================
