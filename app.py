@@ -907,7 +907,7 @@ with col_s2:
 # ======================== 11. ЗВІТ ========================
 st.divider()
 st.subheader("📋 11. Звіт для журналу")
-report = f"""=== TOXICODE AQUARIUM V14 ===
+report = f"""=== TOXICODE AQUARIUM V15 ===
 📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 ПАРАМЕТРИ
